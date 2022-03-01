@@ -275,6 +275,7 @@ impl pallet_sudo::Config for Runtime {
 
 impl pallet_dapi::Config for Runtime {
 	type Event = Event;
+	type Currency = Balances;
 	type IdRandomness = RandomnessCollectiveFlip;
 }
 
