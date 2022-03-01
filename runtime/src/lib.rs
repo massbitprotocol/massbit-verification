@@ -273,9 +273,18 @@ impl pallet_sudo::Config for Runtime {
 	type Call = Call;
 }
 
+parameter_types! {
+	pub const MinConsumerDeposit: Balance = 1000;
+	pub const MinGatewayDeposit: Balance = 1000;
+	pub const MinNodeDeposit: Balance = 1000;
+}
+
 impl pallet_dapi::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
+	type MinConsumerDeposit = MinConsumerDeposit;
+	type MinGatewayDeposit = MinGatewayDeposit;
+	type MinNodeDeposit = MinNodeDeposit;
 	type IdRandomness = RandomnessCollectiveFlip;
 }
 
@@ -294,7 +303,7 @@ construct_runtime!(
 		Balances: pallet_balances,
 		TransactionPayment: pallet_transaction_payment,
 		Sudo: pallet_sudo,
-		DApi: pallet_dapi,
+		Dapi: pallet_dapi,
 	}
 );
 
