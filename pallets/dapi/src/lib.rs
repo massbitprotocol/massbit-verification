@@ -7,7 +7,7 @@ pub mod pallet {
 	use frame_support::pallet_prelude::*;
 	use frame_support::{
 		sp_runtime::traits::Hash,
-		traits::{Currency, LockIdentifier, LockableCurrency, Randomness},
+		traits::{Currency, LockIdentifier, LockableCurrency, Randomness, WithdrawReasons},
 	};
 	use frame_system::pallet_prelude::*;
 	use scale_info::TypeInfo;
@@ -16,7 +16,6 @@ pub mod pallet {
 
 	#[cfg(feature = "std")]
 	use frame_support::serde::{Deserialize, Serialize};
-	use frame_support::traits::WithdrawReasons;
 
 	const LOCK_IDENT: LockIdentifier = *b"dapi    ";
 
@@ -85,33 +84,36 @@ pub mod pallet {
 	pub enum Error<T> {
 		ConsumerDepositNotEnough,
 		GatewayDepositNotEnough,
+		RegisteredGateway,
 		NodeDepositNotEnough,
+		RegisteredNode,
 	}
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		/// A consumer is successfully created. \[account_id, consumer_id, blockchain_type\]
-		ConsumerCreated(T::AccountId, T::Hash, BlockChain),
-		/// A gateway is successfully created. \[account_id, gateway_id, blockchain_type\]
-		GatewayCreated(T::AccountId, T::Hash, BlockChain),
-		/// A node is successfully created. \[account_id, node_id, blockchain_type\]
-		NodeCreated(T::AccountId, T::Hash, BlockChain),
+		/// A consumer is successfully created. \[consumer_id, account_id, blockchain_type\]
+		ConsumerCreated(T::Hash, T::AccountId, BlockChain),
+		/// A gateway is successfully registered. \[gateway_id, account_id, blockchain_type\]
+		GatewayRegistered(T::Hash, T::AccountId, BlockChain),
+		/// A node is successfully registered. \[node_id, account_id, blockchain_type\]
+		NodeRegistered(T::Hash, T::AccountId, BlockChain),
 	}
 
 	#[pallet::storage]
 	#[pallet::getter(fn consumers)]
 	pub(super) type Consumers<T: Config> =
-		StorageMap<_, Twox64Concat, T::Hash, ConsumerOf<T>, OptionQuery>;
+		StorageMap<_, Blake2_128Concat, T::Hash, ConsumerOf<T>, OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn gateways)]
 	pub(super) type Gateways<T: Config> =
-		StorageMap<_, Twox64Concat, T::Hash, GatewayOf<T>, OptionQuery>;
+		StorageMap<_, Blake2_128Concat, T::Hash, GatewayOf<T>, OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn nodes)]
-	pub(super) type Nodes<T: Config> = StorageMap<_, Twox64Concat, T::Hash, NodeOf<T>, OptionQuery>;
+	pub(super) type Nodes<T: Config> =
+		StorageMap<_, Blake2_128Concat, T::Hash, NodeOf<T>, OptionQuery>;
 
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
@@ -137,48 +139,55 @@ pub mod pallet {
 			let consumer_id = T::Hashing::hash_of(&Self::gen_id());
 			<Consumers<T>>::insert(consumer_id, consumer);
 
-			Self::deposit_event(Event::ConsumerCreated(account, consumer_id, blockchain));
+			Self::deposit_event(Event::ConsumerCreated(consumer_id, account, blockchain));
 
 			Ok(().into())
 		}
 
 		#[pallet::weight(100)]
-		pub fn create_gateway(
+		pub fn register_gateway(
 			origin: OriginFor<T>,
+			gateway_id: T::Hash,
 			deposit: BalanceOf<T>,
 			blockchain: BlockChain,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
+			ensure!(<Gateways<T>>::get(gateway_id).is_none(), Error::<T>::RegisteredGateway);
 			ensure!(deposit >= T::MinGatewayDeposit::get(), Error::<T>::GatewayDepositNotEnough);
+
 			T::Currency::set_lock(LOCK_IDENT, &account, deposit, WithdrawReasons::all());
 
-			let gateway =
-				Gateway { owner: account.clone(), blockchain: blockchain.clone(), deposit };
-			let gateway_id = T::Hashing::hash_of(&Self::gen_id());
-			<Gateways<T>>::insert(gateway_id, gateway);
+			<Gateways<T>>::insert(
+				gateway_id,
+				Gateway { owner: account.clone(), blockchain: blockchain.clone(), deposit },
+			);
 
-			Self::deposit_event(Event::GatewayCreated(account, gateway_id, blockchain));
+			Self::deposit_event(Event::GatewayRegistered(gateway_id, account, blockchain));
 
 			Ok(().into())
 		}
 
 		#[pallet::weight(100)]
-		pub fn create_node(
+		pub fn register_node(
 			origin: OriginFor<T>,
+			node_id: T::Hash,
 			deposit: BalanceOf<T>,
 			blockchain: BlockChain,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
+			ensure!(<Nodes<T>>::get(node_id).is_none(), Error::<T>::RegisteredNode);
 			ensure!(deposit >= T::MinNodeDeposit::get(), Error::<T>::NodeDepositNotEnough);
+
 			T::Currency::set_lock(LOCK_IDENT, &account, deposit, WithdrawReasons::all());
 
-			let node = Node { owner: account.clone(), blockchain: blockchain.clone(), deposit };
-			let node_id = T::Hashing::hash_of(&Self::gen_id());
-			<Nodes<T>>::insert(node_id, node);
+			<Nodes<T>>::insert(
+				node_id,
+				Node { owner: account.clone(), blockchain: blockchain.clone(), deposit },
+			);
 
-			Self::deposit_event(Event::GatewayCreated(account, node_id, blockchain));
+			Self::deposit_event(Event::NodeRegistered(node_id, account, blockchain));
 
 			Ok(().into())
 		}
