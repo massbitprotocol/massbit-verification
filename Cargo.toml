@@ -2,6 +2,7 @@
 members = [
     'node',
     'pallets/dapi',
+    'pallets/dapi-staking',
     'runtime',
 ]
 [profile.release]
