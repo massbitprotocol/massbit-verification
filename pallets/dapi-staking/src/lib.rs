@@ -99,7 +99,8 @@ where
 }
 
 /// Contains unlocking chunks.
-/// This is a convenience struct that provides various utility methods to help with unbonding handling.
+/// This is a convenience struct that provides various utility methods to help with unbonding
+/// handling.
 #[derive(Clone, PartialEq, Encode, Decode, Default, RuntimeDebug, TypeInfo)]
 pub struct UnbondingInfo<Balance> {
 	// Vector of unlocking chunks. Sorted in ascending order in respect to unlock_era.
@@ -135,7 +136,8 @@ where
 		match self.unlocking_chunks.binary_search_by(|x| x.unlock_era.cmp(&chunk.unlock_era)) {
 			// Merge with existing chunk if unlock_eras match
 			Ok(pos) => self.unlocking_chunks[pos].add_amount(chunk.amount),
-			// Otherwise insert where it should go. Note that this will in almost all cases return the last index.
+			// Otherwise insert where it should go. Note that this will in almost all cases return
+			// the last index.
 			Err(pos) => self.unlocking_chunks.insert(pos, chunk),
 		}
 	}

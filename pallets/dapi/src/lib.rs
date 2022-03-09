@@ -4,8 +4,8 @@ pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
-	use frame_support::pallet_prelude::*;
 	use frame_support::{
+		pallet_prelude::*,
 		sp_runtime::traits::Hash,
 		traits::{Currency, LockIdentifier, LockableCurrency, Randomness, WithdrawReasons},
 	};
