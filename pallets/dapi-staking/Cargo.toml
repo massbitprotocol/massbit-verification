@@ -19,7 +19,7 @@ pallet-balances = { default-features = false, git = 'https://github.com/parityte
 sp-core = { default-features = false, git = 'https://github.com/paritytech/substrate.git', tag = 'devhub/latest', version = '4.0.0-dev' }
 sp-io = { default-features = false, git = 'https://github.com/paritytech/substrate.git', tag = 'devhub/latest', version = '4.0.0-dev' }
 sp-runtime = { default-features = false, git = 'https://github.com/paritytech/substrate.git', tag = 'devhub/latest', version = '4.0.0-dev' }
-sp-staking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/paritytech/substrate.git", tag = "devhub/latest" }
+sp-staking = { default-features = false, git = "https://github.com/paritytech/substrate.git", tag = "devhub/latest", version = "4.0.0-dev" }
 
 [features]
 default = ['std']

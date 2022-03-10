@@ -3,7 +3,7 @@ members = [
     'node',
     'pallets/dapi',
     'pallets/dapi-staking',
-    'runtime',
+    'runtime/local',
 ]
 [profile.release]
 panic = 'unwind'
