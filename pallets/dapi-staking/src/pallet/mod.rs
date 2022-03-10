@@ -47,12 +47,10 @@ pub mod pallet {
 	pub trait Config: frame_system::Config {
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
-		/// DapiPool contains gateways/nodes run a blockchain network in a zone.
 		type DapiPool: Parameter + Member;
 
 		/// The staking balance.
-		type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>
-			+ ReservableCurrency<Self::AccountId>;
+		type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
 
 		/// Number of block per era.
 		#[pallet::constant]
@@ -122,19 +120,36 @@ pub mod pallet {
 	#[pallet::getter(fn force_era)]
 	pub type ForceEra<T> = StorageValue<_, Forcing, ValueQuery, ForceEraOnEmpty>;
 
+	/// Registered Dapi Pool
+	#[pallet::storage]
+	#[pallet::getter(fn registered_pool)]
+	pub type RegisteredPool<T: Config> =
+		StorageMap<_, Blake2_128Concat, T::DapiPool, (), ValueQuery>;
+
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(crate) fn deposit_event)]
 	pub enum Event<T: Config> {
+		/// New Dapi Pool added for staking.
+		NewPool(T::DapiPool),
 		/// Account has bonded and staked funds on a smart contract.
 		BondAndStake(T::AccountId, T::DapiPool, BalanceOf<T>),
 		/// New dapi staking era. Distribute era rewards to pools.
 		NewDapiStakingEra(EraIndex),
+		/// Reward paid to staker.
+		Reward(T::AccountId, T::DapiPool, EraIndex, BalanceOf<T>),
 	}
 
 	#[pallet::error]
 	pub enum Error<T> {
 		/// Can not stake with zero value.
 		StakingWithNoValue,
+		/// Contract already claimed in this era and reward is distributed
+		AlreadyClaimedInThisEra,
+		/// Era parameter is out of bounds
+		EraOutOfBounds,
+		UnknownEraReward,
+		/// Pool hasn't been staked on in this era.
+		NotStaked,
 	}
 
 	#[pallet::hooks]
@@ -167,6 +182,15 @@ pub mod pallet {
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
+		/// Register pool into staking targets.
+		#[pallet::weight(100)]
+		pub fn register(origin: OriginFor<T>, pool_id: T::DapiPool) -> DispatchResultWithPostInfo {
+			let _ = ensure_root(origin)?;
+			RegisteredPool::<T>::insert(pool_id.clone(), ());
+			Self::deposit_event(Event::<T>::NewPool(pool_id));
+			Ok(().into())
+		}
+
 		/// Lock up and stake balance of the origin account.
 		///
 		/// `value` must be more than the `minimum_balance` specified by `T::Currency`
@@ -224,6 +248,66 @@ pub mod pallet {
 			PoolEraStake::<T>::insert(pool_id.clone(), current_era, staking_info);
 
 			Self::deposit_event(Event::<T>::BondAndStake(staker, pool_id, value_to_stake));
+
+			Ok(().into())
+		}
+
+		/// Claim the rewards earned by pool_id.
+		/// All stakers and developer for this pool will be paid out with single call.
+		/// claim is valid for all unclaimed eras but not longer than history_depth().
+		/// Any user can call this function.
+		#[pallet::weight(100)]
+		pub fn claim(
+			origin: OriginFor<T>,
+			pool_id: T::DapiPool,
+			#[pallet::compact] era: EraIndex,
+		) -> DispatchResultWithPostInfo {
+			let _ = ensure_signed(origin)?;
+
+			let current_era = Self::current_era();
+			let era_low_bound = current_era.saturating_sub(T::HistoryDepth::get());
+
+			ensure!(era < current_era && era >= era_low_bound, Error::<T>::EraOutOfBounds);
+
+			let mut staking_info = Self::staking_info(&pool_id, era);
+
+			ensure!(staking_info.claimed_rewards.is_zero(), Error::<T>::AlreadyClaimedInThisEra);
+
+			ensure!(!staking_info.stakers.is_empty(), Error::<T>::NotStaked);
+
+			let reward_and_stake =
+				Self::era_reward_and_stake(era).ok_or(Error::<T>::UnknownEraReward)?;
+
+			// Calculate the pool reward for this era.
+			let reward_ratio = Perbill::from_rational(staking_info.total, reward_and_stake.staked);
+			let dapi_pool_reward = reward_ratio * reward_and_stake.rewards;
+
+			// Withdraw reward funds form the pool staking
+			let mut stakers_reward = T::Currency::withdraw(
+				&Self::account_id(),
+				dapi_pool_reward,
+				WithdrawReasons::TRANSFER,
+				ExistenceRequirement::AllowDeath,
+			)?;
+
+			// Calculate & pay rewards for all stakers
+			let stakers_total_reward = stakers_reward.peek();
+			for (staker, staked_balance) in &staking_info.stakers {
+				let ratio = Perbill::from_rational(*staked_balance, staking_info.total);
+				let (reward, new_stakers_reward) =
+					stakers_reward.split(ratio * stakers_total_reward);
+				stakers_reward = new_stakers_reward;
+
+				Self::deposit_event(Event::<T>::Reward(
+					staker.clone(),
+					pool_id.clone(),
+					era,
+					reward.peek(),
+				));
+			}
+
+			staking_info.claimed_rewards = dapi_pool_reward;
+			<PoolEraStake<T>>::insert(&pool_id, era, staking_info);
 
 			Ok(().into())
 		}
