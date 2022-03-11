@@ -1,9 +1,8 @@
 [package]
 name = "local-runtime"
 version = "0.1.0"
+authors = [ "Codelight" ]
 edition = "2021"
-license = "Unlicense"
-publish = false
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
