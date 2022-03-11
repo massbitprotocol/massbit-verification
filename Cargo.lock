@@ -3279,7 +3279,7 @@ dependencies = [
 
 [[package]]
 name = "node-template"
-version = "4.0.0-dev"
+version = "0.1.0"
 dependencies = [
  "frame-benchmarking",
  "frame-benchmarking-cli",
@@ -3528,6 +3528,16 @@ dependencies = [
  "scale-info",
  "sp-runtime",
  "sp-std",
+]
+
+[[package]]
+name = "pallet-block-reward"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
 ]
 
 [[package]]
