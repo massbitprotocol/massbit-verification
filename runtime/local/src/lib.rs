@@ -6,6 +6,7 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+use codec::{Decode, Encode};
 use pallet_grandpa::{
 	fg_primitives, AuthorityId as GrandpaId, AuthorityList as GrandpaAuthorityList,
 };
@@ -24,14 +25,15 @@ use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 
 // A few exports that help ease life for downstream crates.
+use frame_support::traits::OnUnbalanced;
 pub use frame_support::{
 	construct_runtime, parameter_types,
-	traits::{KeyOwnerProofSystem, Randomness, StorageInfo},
+	traits::{Currency, KeyOwnerProofSystem, Randomness, StorageInfo},
 	weights::{
 		constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND},
 		IdentityFee, Weight,
 	},
-	StorageValue,
+	PalletId, RuntimeDebug, StorageValue,
 };
 pub use pallet_balances::Call as BalancesCall;
 pub use pallet_timestamp::Call as TimestampCall;
@@ -40,7 +42,9 @@ use pallet_transaction_payment::CurrencyAdapter;
 pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 
+pub use pallet_block_reward;
 pub use pallet_dapi;
+pub use pallet_dapi_staking;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -89,8 +93,8 @@ pub mod opaque {
 //   https://docs.substrate.io/v3/runtime/upgrades#runtime-versioning
 #[sp_version::runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
-	spec_name: create_runtime_str!("massbit"),
-	impl_name: create_runtime_str!("massbit"),
+	spec_name: create_runtime_str!("massbit-local"),
+	impl_name: create_runtime_str!("massbit-local"),
 	authoring_version: 1,
 	spec_version: 1,
 	impl_version: 1,
@@ -98,16 +102,17 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 	transaction_version: 1,
 };
 
+/// Constant values used within the runtime.
+pub const MILLIMBTL: Balance = 1_000_000_000_000_000;
+pub const MBTL: Balance = 1_000 * MILLIMBTL;
+
 /// This determines the average expected block time that we are targeting.
 /// Blocks will be produced at a minimum duration defined by `SLOT_DURATION`.
 /// `SLOT_DURATION` is picked up by `pallet_timestamp` which is in turn picked
 /// up by `pallet_aura` to implement `fn slot_duration()`.
 ///
 /// Change this to adjust the block time.
-pub const MILLISECS_PER_BLOCK: u64 = 6000;
-
-// NOTE: Currently it is not possible to change the slot duration after the chain has started.
-//       Attempting to do so will brick block production.
+pub const MILLISECS_PER_BLOCK: u64 = 2000;
 pub const SLOT_DURATION: u64 = MILLISECS_PER_BLOCK;
 
 // Time is measured by number of blocks.
@@ -133,8 +138,6 @@ parameter_types! {
 		::max_with_normal_ratio(5 * 1024 * 1024, NORMAL_DISPATCH_RATIO);
 	pub const SS58Prefix: u8 = 42;
 }
-
-// Configure FRAME pallets to include in runtime.
 
 impl frame_system::Config for Runtime {
 	/// The basic call filter to use in dispatchable.
@@ -226,7 +229,7 @@ parameter_types! {
 impl pallet_timestamp::Config for Runtime {
 	/// A timestamp: milliseconds since the unix epoch.
 	type Moment = u64;
-	type OnTimestampSet = Aura;
+	type OnTimestampSet = (Aura, BlockReward);
 	type MinimumPeriod = MinimumPeriod;
 	type WeightInfo = ();
 }
@@ -240,9 +243,7 @@ impl pallet_balances::Config for Runtime {
 	type MaxLocks = MaxLocks;
 	type MaxReserves = ();
 	type ReserveIdentifier = [u8; 8];
-	/// The type for recording an account's balance.
 	type Balance = Balance;
-	/// The ubiquitous event type.
 	type Event = Event;
 	type DustRemoval = ();
 	type ExistentialDeposit = ExistentialDeposit;
@@ -261,6 +262,47 @@ impl pallet_transaction_payment::Config for Runtime {
 	type OperationalFeeMultiplier = OperationalFeeMultiplier;
 	type WeightToFee = IdentityFee<Balance>;
 	type FeeMultiplierUpdate = ();
+}
+
+parameter_types! {
+	pub const DapiStakingPalletId: PalletId = PalletId(*b"pi/dapst");
+}
+
+type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
+
+pub struct OnBlockReward;
+impl OnUnbalanced<NegativeImbalance> for OnBlockReward {
+	fn on_nonzero_unbalanced(amount: NegativeImbalance) {
+		DapiStaking::on_unbalanced(amount);
+	}
+}
+
+parameter_types! {
+	pub const RewardAmount: Balance = 200_000 * MILLIMBTL;
+}
+
+impl pallet_block_reward::Config for Runtime {
+	type Currency = Balances;
+	type OnBlockReward = OnBlockReward;
+	type RewardAmount = RewardAmount;
+}
+
+parameter_types! {
+	pub const BlockPerEra: BlockNumber = 60;
+	pub const HistoryDepth: u32 = 10;
+	pub const UnbondingPeriod: u32 = 2;
+	pub const MinimumRemainingAmount: Balance = 1 * MBTL;
+}
+
+impl pallet_dapi_staking::Config for Runtime {
+	type Event = Event;
+	type DapiPool = Hash;
+	type Currency = Balances;
+	type BlockPerEra = BlockPerEra;
+	type HistoryDepth = HistoryDepth;
+	type UnbondingPeriod = UnbondingPeriod;
+	type PalletId = DapiStakingPalletId;
+	type MinimumRemainingAmount = MinimumRemainingAmount;
 }
 
 impl pallet_sudo::Config for Runtime {
@@ -299,6 +341,8 @@ construct_runtime!(
 		TransactionPayment: pallet_transaction_payment,
 		Sudo: pallet_sudo,
 		Dapi: pallet_dapi,
+		DapiStaking: pallet_dapi_staking::{Pallet, Call, Storage, Event<T>},
+		BlockReward: pallet_block_reward::{Pallet},
 	}
 );
 
@@ -497,8 +541,6 @@ impl_runtime_apis! {
 			let whitelist: Vec<TrackedStorageKey> = vec![
 				// Block Number
 				hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef702a5c1b19ab7a04f536c519aca4983ac").to_vec().into(),
-				// Total Issuance
-				hex_literal::hex!("c2261276cc9d1f8598ea4b6a74b15c2f57c875e4cff74148e4628f264b974c80").to_vec().into(),
 				// Execution Phase
 				hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef7ff553b5a9862a516939d82b3d3d8661a").to_vec().into(),
 				// Event Count
