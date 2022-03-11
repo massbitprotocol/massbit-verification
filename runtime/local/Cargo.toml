@@ -44,6 +44,8 @@ hex-literal = { version = "0.3.4", optional = true }
 
 # Local Dependencies
 pallet-dapi = { path = "../../pallets/dapi", default-features = false}
+pallet-dapi-staking = { path = "../../pallets/dapi-staking", default-features = false }
+pallet-block-reward = { path = "../../pallets/block-reward", default-features = false }
 
 [build-dependencies]
 substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/paritytech/substrate.git", tag = "devhub/latest" }

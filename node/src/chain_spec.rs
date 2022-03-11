@@ -38,7 +38,9 @@ pub fn authority_keys_from_seed(s: &str) -> (AuraId, GrandpaId) {
 
 pub fn development_config() -> Result<ChainSpec, String> {
 	let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
-
+	let mut properties = serde_json::map::Map::new();
+	properties.insert("tokenSymbol".into(), "ASTL".into());
+	properties.insert("tokenDecimals".into(), 18.into());
 	Ok(ChainSpec::from_genesis(
 		// Name
 		"Development",
@@ -69,7 +71,7 @@ pub fn development_config() -> Result<ChainSpec, String> {
 		// Protocol ID
 		None,
 		// Properties
-		None,
+		Some(properties),
 		// Extensions
 		None,
 	))
@@ -136,8 +138,11 @@ fn testnet_genesis(
 			code: wasm_binary.to_vec(),
 		},
 		balances: BalancesConfig {
-			// Configure endowed accounts with initial balance of 1 << 60.
-			balances: endowed_accounts.iter().cloned().map(|k| (k, 1 << 60)).collect(),
+			balances: endowed_accounts
+				.iter()
+				.cloned()
+				.map(|k| (k, 1_000_000_000_000_000_000_000))
+				.collect(),
 		},
 		aura: AuraConfig {
 			authorities: initial_authorities.iter().map(|x| (x.0.clone())).collect(),
