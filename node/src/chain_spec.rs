@@ -64,15 +64,11 @@ pub fn development_config() -> Result<ChainSpec, String> {
 				true,
 			)
 		},
-		// Bootnodes
 		vec![],
-		// Telemetry
 		None,
-		// Protocol ID
 		None,
-		// Properties
+		None,
 		Some(properties),
-		// Extensions
 		None,
 	))
 }
@@ -111,15 +107,11 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
 				true,
 			)
 		},
-		// Bootnodes
 		vec![],
-		// Telemetry
 		None,
-		// Protocol ID
 		None,
-		// Properties
 		None,
-		// Extensions
+		None,
 		None,
 	))
 }
@@ -150,10 +142,7 @@ fn testnet_genesis(
 		grandpa: GrandpaConfig {
 			authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect(),
 		},
-		sudo: SudoConfig {
-			// Assign network admin rights.
-			key: root_key,
-		},
+		sudo: SudoConfig { key: Some(root_key) },
 		transaction_payment: Default::default(),
 	}
 }

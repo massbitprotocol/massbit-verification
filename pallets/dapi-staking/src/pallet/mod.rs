@@ -28,6 +28,7 @@ pub mod pallet {
 
 	#[pallet::pallet]
 	#[pallet::generate_store(pub(crate) trait Store)]
+	#[pallet::without_storage_info]
 	pub struct Pallet<T>(PhantomData<T>);
 
 	type NegativeImbalanceOf<T> = <<T as Config>::Currency as Currency<
@@ -36,8 +37,6 @@ pub mod pallet {
 
 	impl<T: Config> OnUnbalanced<NegativeImbalanceOf<T>> for Pallet<T> {
 		fn on_nonzero_unbalanced(block_reward: NegativeImbalanceOf<T>) {
-			log::info!("on unbalanced {:?}", block_reward.peek());
-
 			BlockRewardAccumulator::<T>::mutate(|accumulated_reward| {
 				*accumulated_reward = accumulated_reward.saturating_add(block_reward.peek())
 			});

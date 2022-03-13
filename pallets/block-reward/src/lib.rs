@@ -5,7 +5,6 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
 	use frame_support::{
-		log,
 		pallet_prelude::*,
 		traits::{Currency, OnTimestampSet, OnUnbalanced},
 	};
@@ -34,7 +33,6 @@ pub mod pallet {
 	impl<Moment, T: Config> OnTimestampSet<Moment> for Pallet<T> {
 		fn on_timestamp_set(_: Moment) {
 			let inflation = T::Currency::issue(T::RewardAmount::get());
-			log::info!("on unbalanced {:?}", T::RewardAmount::get());
 			T::OnBlockReward::on_unbalanced(inflation);
 		}
 	}
