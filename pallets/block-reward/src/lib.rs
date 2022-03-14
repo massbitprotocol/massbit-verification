@@ -9,7 +9,6 @@ pub mod pallet {
 		traits::{Currency, OnTimestampSet, OnUnbalanced},
 	};
 
-	/// The balance type of this pallet.
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 

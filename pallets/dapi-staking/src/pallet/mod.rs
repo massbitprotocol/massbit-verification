@@ -88,7 +88,7 @@ pub mod pallet {
 	#[pallet::getter(fn current_era)]
 	pub type CurrentEra<T> = StorageValue<_, EraIndex, ValueQuery>;
 
-	/// Accumulator for block rewards during an era. It is reset at every new era
+	/// Accumulator for block rewards during an era. It is reset at every new era.
 	#[pallet::storage]
 	#[pallet::getter(fn block_reward_accumulator)]
 	pub type BlockRewardAccumulator<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
@@ -99,7 +99,7 @@ pub mod pallet {
 	pub type EraRewardsAndStakes<T: Config> =
 		StorageMap<_, Twox64Concat, EraIndex, EraRewardAndStake<BalanceOf<T>>>;
 
-	/// Stores amount staked and stakers for a dapi pool per era
+	/// Stores amount staked and stakers for a dapi pool per era.
 	#[pallet::storage]
 	#[pallet::getter(fn pool_era_stake)]
 	pub type PoolEraStake<T: Config> = StorageDoubleMap<
@@ -130,26 +130,18 @@ pub mod pallet {
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(crate) fn deposit_event)]
 	pub enum Event<T: Config> {
-		/// New Dapi Pool added for staking.
 		NewPool(T::DapiPool),
-		/// Account has bonded and staked funds on a smart contract.
 		BondAndStake(T::AccountId, T::DapiPool, BalanceOf<T>),
-		/// New dapi staking era. Distribute era rewards to pools.
 		NewDapiStakingEra(EraIndex),
-		/// Reward paid to staker.
 		Reward(T::AccountId, T::DapiPool, EraIndex, BalanceOf<T>),
 	}
 
 	#[pallet::error]
 	pub enum Error<T> {
-		/// Can not stake with zero value.
 		StakingWithNoValue,
-		/// Contract already claimed in this era and reward is distributed
 		AlreadyClaimedInThisEra,
-		/// Era parameter is out of bounds
 		EraOutOfBounds,
 		UnknownEraReward,
-		/// Pool hasn't been staked on in this era.
 		NotStaked,
 	}
 
