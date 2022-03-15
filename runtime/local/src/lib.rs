@@ -28,7 +28,7 @@ use sp_version::RuntimeVersion;
 use frame_support::traits::OnUnbalanced;
 pub use frame_support::{
 	construct_runtime, parameter_types,
-	traits::{Currency, KeyOwnerProofSystem, Randomness, StorageInfo},
+	traits::{Currency, KeyOwnerProofSystem, StorageInfo},
 	weights::{
 		constants::{BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight, WEIGHT_PER_SECOND},
 		IdentityFee, Weight,
@@ -192,8 +192,6 @@ impl frame_system::Config for Runtime {
 	type MaxConsumers = frame_support::traits::ConstU32<16>;
 }
 
-impl pallet_randomness_collective_flip::Config for Runtime {}
-
 parameter_types! {
 	pub const MaxAuthorities: u32 = 32;
 }
@@ -323,7 +321,6 @@ impl pallet_dapi::Config for Runtime {
 	type MinConsumerDeposit = MinConsumerDeposit;
 	type MinGatewayDeposit = MinGatewayDeposit;
 	type MinNodeDeposit = MinNodeDeposit;
-	type IdRandomness = RandomnessCollectiveFlip;
 	type Staking = DapiStaking;
 }
 
@@ -335,7 +332,6 @@ construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic
 	{
 		System: frame_system,
-		RandomnessCollectiveFlip: pallet_randomness_collective_flip,
 		Timestamp: pallet_timestamp,
 		Aura: pallet_aura,
 		Grandpa: pallet_grandpa,

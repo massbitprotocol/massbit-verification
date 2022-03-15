@@ -1,66 +1,55 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(feature = "std")]
+use frame_support::serde::{Deserialize, Serialize};
+use frame_support::{
+	sp_runtime::traits::Hash,
+	traits::{Currency, LockIdentifier, LockableCurrency, Randomness, WithdrawReasons},
+};
+use pallet_dapi_staking::StakingInterface;
+use scale_info::TypeInfo;
+use sp_io::hashing::blake2_128;
+use sp_std::prelude::*;
+
 pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
-	use frame_support::{
-		pallet_prelude::*,
-		sp_runtime::traits::Hash,
-		traits::{Currency, LockIdentifier, LockableCurrency, Randomness, WithdrawReasons},
-	};
+	use super::*;
+	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
-	use pallet_dapi_staking::StakingInterface;
-	use scale_info::TypeInfo;
-	use sp_io::hashing::blake2_128;
-	use sp_std::{convert::TryInto, prelude::*, vec::Vec};
-
-	#[cfg(feature = "std")]
-	use frame_support::serde::{Deserialize, Serialize};
-
-	const LOCK_IDENT: LockIdentifier = *b"dapi    ";
 
 	type AccountIdOf<T> = <T as frame_system::Config>::AccountId;
 	type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
-	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
-	#[scale_info(skip_type_params(T))]
+	#[derive(Copy, Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
 	#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 	pub enum BlockChain {
 		Ethereum,
 		Polkadot,
 	}
 
-	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
-	#[scale_info(skip_type_params(T))]
-	pub struct Consumer<AccountId> {
+	#[derive(Clone, PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
+	pub struct Project<AccountId> {
 		pub owner: AccountId,
 		pub blockchain: BlockChain,
-		pub quota: i64,
+		pub quota: u64,
 	}
 
-	type ConsumerOf<T> = Consumer<AccountIdOf<T>>;
-
-	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
-	#[scale_info(skip_type_params(T))]
+	#[derive(Clone, PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
 	pub struct Gateway<AccountId, Balance> {
 		pub owner: AccountId,
 		pub blockchain: BlockChain,
 		pub deposit: Balance,
 	}
 
-	type GatewayOf<T> = Gateway<AccountIdOf<T>, BalanceOf<T>>;
-
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
-	#[scale_info(skip_type_params(T))]
 	pub struct Node<AccountId, Balance> {
 		pub owner: AccountId,
 		pub blockchain: BlockChain,
 		pub deposit: Balance,
 	}
-
-	type NodeOf<T> = Node<AccountIdOf<T>, BalanceOf<T>>;
 
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
@@ -74,50 +63,52 @@ pub mod pallet {
 
 		type MinNodeDeposit: Get<BalanceOf<Self>>;
 
-		type IdRandomness: Randomness<Self::Hash, Self::BlockNumber>;
-
 		type Staking: StakingInterface<BalanceOf<Self>, Self::AccountId, Self::Hash>;
 	}
 
 	#[pallet::pallet]
 	#[pallet::generate_store(pub(super) trait Store)]
 	#[pallet::without_storage_info]
-	pub struct Pallet<T>(PhantomData<T>);
+	pub struct Pallet<T>(_);
 
 	#[pallet::error]
 	pub enum Error<T> {
-		ConsumerDepositNotEnough,
-		GatewayDepositNotEnough,
-		RegisteredGateway,
-		NodeDepositNotEnough,
-		RegisteredNode,
+		AlreadyRegistered,
+		InsufficientBoding,
 	}
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		/// A consumer is successfully created. \[consumer_id, account_id, blockchain_type\]
-		ConsumerCreated(T::Hash, T::AccountId, BlockChain),
-		/// A gateway is successfully registered. \[gateway_id, account_id, blockchain_type\]
-		GatewayRegistered(T::Hash, T::AccountId, BlockChain),
-		/// A node is successfully registered. \[node_id, account_id, blockchain_type\]
-		NodeRegistered(T::Hash, T::AccountId, BlockChain),
+		/// A project is successfully registered. \[project_id, project_hash, account_id,
+		/// blockchain, quota\]
+		ProjectRegistered(Vec<u8>, T::Hash, T::AccountId, BlockChain, u64),
+		/// A gateway is successfully registered. \[gateway_id, gateway_hash, account_id,
+		/// blockchain\]
+		GatewayRegistered(Vec<u8>, T::Hash, T::AccountId, BlockChain),
+		/// A node is successfully registered. \[node_id, node_hash, account_id, blockchain\]
+		NodeRegistered(Vec<u8>, T::Hash, T::AccountId, BlockChain),
 	}
 
 	#[pallet::storage]
 	#[pallet::getter(fn consumers)]
 	pub(super) type Consumers<T: Config> =
-		StorageMap<_, Blake2_128Concat, T::Hash, ConsumerOf<T>, OptionQuery>;
+		StorageMap<_, Blake2_128Concat, T::Hash, Project<AccountIdOf<T>>, OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn gateways)]
-	pub(super) type Gateways<T: Config> =
-		StorageMap<_, Blake2_128Concat, T::Hash, GatewayOf<T>, OptionQuery>;
+	pub(super) type Gateways<T: Config> = StorageMap<
+		_,
+		Blake2_128Concat,
+		T::Hash,
+		Gateway<AccountIdOf<T>, BalanceOf<T>>,
+		OptionQuery,
+	>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn nodes)]
 	pub(super) type Nodes<T: Config> =
-		StorageMap<_, Blake2_128Concat, T::Hash, NodeOf<T>, OptionQuery>;
+		StorageMap<_, Blake2_128Concat, T::Hash, Node<AccountIdOf<T>, BalanceOf<T>>, OptionQuery>;
 
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
@@ -125,25 +116,30 @@ pub mod pallet {
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		#[pallet::weight(100)]
-		pub fn create_consumer(
+		pub fn register_project(
 			origin: OriginFor<T>,
-			deposit: BalanceOf<T>,
+			project_id: Vec<u8>,
 			blockchain: BlockChain,
+			deposit: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
-			ensure!(deposit >= T::MinConsumerDeposit::get(), Error::<T>::ConsumerDepositNotEnough);
-			T::Currency::set_lock(LOCK_IDENT, &account, deposit, WithdrawReasons::all());
+			let project_hash = T::Hashing::hash_of(&project_id);
+			ensure!(<Gateways<T>>::get(project_hash).is_none(), Error::<T>::AlreadyRegistered);
 
-			let consumer = Consumer {
-				owner: account.clone(),
-				blockchain: blockchain.clone(),
-				quota: Self::calculate_consumer_quota(deposit),
-			};
-			let consumer_id = T::Hashing::hash_of(&Self::gen_id());
-			<Consumers<T>>::insert(consumer_id, consumer);
+			let quota = Self::calculate_consumer_quota(deposit);
+			<Consumers<T>>::insert(
+				project_hash,
+				Project { owner: account.clone(), blockchain: blockchain.clone(), quota },
+			);
 
-			Self::deposit_event(Event::ConsumerCreated(consumer_id, account, blockchain));
+			Self::deposit_event(Event::ProjectRegistered(
+				project_id,
+				project_hash,
+				account,
+				blockchain,
+				quota,
+			));
 
 			Ok(().into())
 		}
@@ -151,25 +147,30 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn register_gateway(
 			origin: OriginFor<T>,
-			gateway: Vec<u8>,
-			deposit: BalanceOf<T>,
+			gateway_id: Vec<u8>,
 			blockchain: BlockChain,
+			#[pallet::compact] deposit: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
-			let gateway_id = T::Hashing::hash_of(&gateway);
-			ensure!(<Gateways<T>>::get(gateway_id).is_none(), Error::<T>::RegisteredGateway);
+			let gateway_hash = T::Hashing::hash_of(&gateway_id);
+			ensure!(<Gateways<T>>::get(gateway_hash).is_none(), Error::<T>::AlreadyRegistered);
 
-			ensure!(deposit >= T::MinGatewayDeposit::get(), Error::<T>::GatewayDepositNotEnough);
+			ensure!(deposit >= T::MinGatewayDeposit::get(), Error::<T>::InsufficientBoding);
 
 			T::Staking::stake(account.clone(), T::Hashing::hash_of(&blockchain), deposit.clone())?;
 
 			<Gateways<T>>::insert(
-				gateway_id,
+				gateway_hash,
 				Gateway { owner: account.clone(), blockchain: blockchain.clone(), deposit },
 			);
 
-			Self::deposit_event(Event::GatewayRegistered(gateway_id, account, blockchain));
+			Self::deposit_event(Event::GatewayRegistered(
+				gateway_id,
+				gateway_hash,
+				account,
+				blockchain,
+			));
 
 			Ok(().into())
 		}
@@ -177,40 +178,33 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn register_node(
 			origin: OriginFor<T>,
-			node_id: T::Hash,
+			node_id: Vec<u8>,
 			deposit: BalanceOf<T>,
 			blockchain: BlockChain,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
-			ensure!(<Nodes<T>>::get(node_id).is_none(), Error::<T>::RegisteredNode);
-			ensure!(deposit >= T::MinNodeDeposit::get(), Error::<T>::NodeDepositNotEnough);
+			let node_hash = T::Hashing::hash_of(&node_id);
+			ensure!(<Nodes<T>>::get(node_hash).is_none(), Error::<T>::AlreadyRegistered);
 
-			T::Currency::set_lock(LOCK_IDENT, &account, deposit, WithdrawReasons::all());
+			ensure!(deposit >= T::MinNodeDeposit::get(), Error::<T>::InsufficientBoding);
+
+			T::Staking::stake(account.clone(), T::Hashing::hash_of(&blockchain), deposit.clone())?;
 
 			<Nodes<T>>::insert(
-				node_id,
+				node_hash,
 				Node { owner: account.clone(), blockchain: blockchain.clone(), deposit },
 			);
 
-			Self::deposit_event(Event::NodeRegistered(node_id, account, blockchain));
+			Self::deposit_event(Event::NodeRegistered(node_id, node_hash, account, blockchain));
 
 			Ok(().into())
 		}
 	}
 
 	impl<T: Config> Pallet<T> {
-		fn gen_id() -> [u8; 16] {
-			let payload = (
-				T::IdRandomness::random(&b"id"[..]).0,
-				<frame_system::Pallet<T>>::extrinsic_index().unwrap_or_default(),
-				<frame_system::Pallet<T>>::block_number(),
-			);
-			payload.using_encoded(blake2_128)
-		}
-
-		fn calculate_consumer_quota(amount: BalanceOf<T>) -> i64 {
-			TryInto::<u64>::try_into(amount).ok().unwrap_or_default() as i64
+		fn calculate_consumer_quota(amount: BalanceOf<T>) -> u64 {
+			TryInto::<u64>::try_into(amount).ok().unwrap_or_default()
 		}
 	}
 }
