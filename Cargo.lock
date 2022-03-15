@@ -3858,7 +3858,6 @@ dependencies = [
 name = "pallet-block-reward"
 version = "0.1.0"
 dependencies = [
- "frame-benchmarking",
  "frame-support",
  "frame-system",
  "parity-scale-codec",
@@ -3873,6 +3872,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "pallet-balances",
+ "pallet-dapi-staking",
  "pallet-randomness-collective-flip",
  "parity-scale-codec",
  "scale-info",

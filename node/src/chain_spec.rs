@@ -39,7 +39,7 @@ pub fn authority_keys_from_seed(s: &str) -> (AuraId, GrandpaId) {
 pub fn development_config() -> Result<ChainSpec, String> {
 	let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 	let mut properties = serde_json::map::Map::new();
-	properties.insert("tokenSymbol".into(), "ASTL".into());
+	properties.insert("tokenSymbol".into(), "MBTL".into());
 	properties.insert("tokenDecimals".into(), 18.into());
 	Ok(ChainSpec::from_genesis(
 		// Name
@@ -85,11 +85,8 @@ pub fn local_testnet_config() -> Result<ChainSpec, String> {
 		move || {
 			testnet_genesis(
 				wasm_binary,
-				// Initial PoA authorities
 				vec![authority_keys_from_seed("Alice"), authority_keys_from_seed("Bob")],
-				// Sudo account
 				get_account_id_from_seed::<sr25519::Public>("Alice"),
-				// Pre-funded accounts
 				vec![
 					get_account_id_from_seed::<sr25519::Public>("Alice"),
 					get_account_id_from_seed::<sr25519::Public>("Bob"),
