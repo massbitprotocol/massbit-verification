@@ -150,8 +150,8 @@ pub mod pallet {
 			let previous_era = Self::current_era();
 
 			// Value is compared to 1 since genesis block is ignored
-			if now % block_per_era == BlockNumberFor::<T>::from(1u32) ||
-				force_new_era || previous_era.is_zero()
+			if now % block_per_era == BlockNumberFor::<T>::from(1u32)
+				|| force_new_era || previous_era.is_zero()
 			{
 				let next_era = previous_era + 1;
 				CurrentEra::<T>::put(next_era);
@@ -242,24 +242,24 @@ pub mod pallet {
 		}
 	}
 
-	pub trait StakingInterface<Balance, AccountId, Hash> {
+	pub trait Staking<Balance, AccountId, Hash> {
 		/// Lock up and stake balance of the account.
 		///
 		/// `amount` must be more than the `minimum_balance` specified by `T::Currency`
 		/// unless account already has bonded value equal or more than 'minimum_balance'.
 		///
 		/// Effects of staking will be felt at the beginning of the next era.
-		fn stake(account_id: AccountId, pool_id: Hash, amount: Balance) -> DispatchResult;
+		fn bond_and_stake(account_id: AccountId, pool_id: Hash, amount: Balance) -> DispatchResult;
 	}
 
 	impl<T: Config>
-		StakingInterface<
+		Staking<
 			<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
 			T::AccountId,
 			T::Hash,
 		> for Pallet<T>
 	{
-		fn stake(
+		fn bond_and_stake(
 			staker: T::AccountId,
 			pool_id: T::Hash,
 			value: <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,

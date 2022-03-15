@@ -6,10 +6,10 @@ use frame_support::{
 	sp_runtime::traits::Hash,
 	traits::{Currency, LockIdentifier, LockableCurrency, Randomness, WithdrawReasons},
 };
-use pallet_dapi_staking::StakingInterface;
 use scale_info::TypeInfo;
-use sp_io::hashing::blake2_128;
 use sp_std::prelude::*;
+
+use pallet_dapi_staking::Staking;
 
 pub use pallet::*;
 
@@ -63,7 +63,7 @@ pub mod pallet {
 
 		type MinNodeDeposit: Get<BalanceOf<Self>>;
 
-		type Staking: StakingInterface<BalanceOf<Self>, Self::AccountId, Self::Hash>;
+		type Staking: Staking<BalanceOf<Self>, Self::AccountId, Self::Hash>;
 	}
 
 	#[pallet::pallet]
@@ -158,7 +158,11 @@ pub mod pallet {
 
 			ensure!(deposit >= T::MinGatewayDeposit::get(), Error::<T>::InsufficientBoding);
 
-			T::Staking::stake(account.clone(), T::Hashing::hash_of(&blockchain), deposit.clone())?;
+			T::Staking::bond_and_stake(
+				account.clone(),
+				T::Hashing::hash_of(&blockchain),
+				deposit.clone(),
+			)?;
 
 			<Gateways<T>>::insert(
 				gateway_hash,
@@ -189,7 +193,11 @@ pub mod pallet {
 
 			ensure!(deposit >= T::MinNodeDeposit::get(), Error::<T>::InsufficientBoding);
 
-			T::Staking::stake(account.clone(), T::Hashing::hash_of(&blockchain), deposit.clone())?;
+			T::Staking::bond_and_stake(
+				account.clone(),
+				T::Hashing::hash_of(&blockchain),
+				deposit.clone(),
+			)?;
 
 			<Nodes<T>>::insert(
 				node_hash,
