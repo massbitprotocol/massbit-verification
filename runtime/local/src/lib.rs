@@ -298,7 +298,6 @@ parameter_types! {
 
 impl pallet_dapi_staking::Config for Runtime {
 	type Event = Event;
-	type DapiPool = Hash;
 	type Currency = Balances;
 	type BlockPerEra = BlockPerEra;
 	type HistoryDepth = HistoryDepth;
@@ -325,6 +324,7 @@ impl pallet_dapi::Config for Runtime {
 	type MinGatewayDeposit = MinGatewayDeposit;
 	type MinNodeDeposit = MinNodeDeposit;
 	type IdRandomness = RandomnessCollectiveFlip;
+	type Staking = DapiStaking;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.

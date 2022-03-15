@@ -10,9 +10,10 @@ pub mod pallet {
 		traits::{Currency, LockIdentifier, LockableCurrency, Randomness, WithdrawReasons},
 	};
 	use frame_system::pallet_prelude::*;
+	use pallet_dapi_staking::StakingInterface;
 	use scale_info::TypeInfo;
 	use sp_io::hashing::blake2_128;
-	use sp_std::{convert::TryInto, prelude::*};
+	use sp_std::{convert::TryInto, prelude::*, vec::Vec};
 
 	#[cfg(feature = "std")]
 	use frame_support::serde::{Deserialize, Serialize};
@@ -74,6 +75,8 @@ pub mod pallet {
 		type MinNodeDeposit: Get<BalanceOf<Self>>;
 
 		type IdRandomness: Randomness<Self::Hash, Self::BlockNumber>;
+
+		type Staking: StakingInterface<BalanceOf<Self>, Self::AccountId, Self::Hash>;
 	}
 
 	#[pallet::pallet]
@@ -148,16 +151,18 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn register_gateway(
 			origin: OriginFor<T>,
-			gateway_id: T::Hash,
+			gateway: Vec<u8>,
 			deposit: BalanceOf<T>,
 			blockchain: BlockChain,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
+			let gateway_id = T::Hashing::hash_of(&gateway);
 			ensure!(<Gateways<T>>::get(gateway_id).is_none(), Error::<T>::RegisteredGateway);
+
 			ensure!(deposit >= T::MinGatewayDeposit::get(), Error::<T>::GatewayDepositNotEnough);
 
-			T::Currency::set_lock(LOCK_IDENT, &account, deposit, WithdrawReasons::all());
+			T::Staking::stake(account.clone(), T::Hashing::hash_of(&blockchain), deposit.clone())?;
 
 			<Gateways<T>>::insert(
 				gateway_id,

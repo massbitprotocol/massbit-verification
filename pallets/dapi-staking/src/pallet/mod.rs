@@ -4,8 +4,8 @@ use frame_support::{
 	ensure,
 	pallet_prelude::*,
 	traits::{
-		Currency, ExistenceRequirement, Get, Imbalance, LockIdentifier, LockableCurrency,
-		OnUnbalanced, ReservableCurrency, WithdrawReasons,
+		tokens::Balance, Currency, ExistenceRequirement, Get, Imbalance, LockIdentifier,
+		LockableCurrency, OnUnbalanced, ReservableCurrency, WithdrawReasons,
 	},
 	weights::Weight,
 	PalletId,
@@ -15,7 +15,7 @@ use sp_runtime::{
 	traits::{AccountIdConversion, CheckedAdd, Saturating, Zero},
 	ArithmeticError, Perbill,
 };
-use sp_std::convert::From;
+use sp_std::{convert::From, fmt::Debug};
 
 const STAKING_ID: LockIdentifier = *b"apistake";
 
@@ -47,8 +47,6 @@ pub mod pallet {
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-
-		type DapiPool: Parameter + Member;
 
 		/// The staking balance.
 		type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
@@ -105,7 +103,7 @@ pub mod pallet {
 	pub type PoolEraStake<T: Config> = StorageDoubleMap<
 		_,
 		Blake2_128Concat,
-		T::DapiPool,
+		T::Hash,
 		Twox64Concat,
 		EraIndex,
 		EraStakingPoints<T::AccountId, BalanceOf<T>>,
@@ -124,16 +122,15 @@ pub mod pallet {
 	/// Registered Dapi Pool
 	#[pallet::storage]
 	#[pallet::getter(fn registered_pool)]
-	pub type RegisteredPool<T: Config> =
-		StorageMap<_, Blake2_128Concat, T::DapiPool, (), ValueQuery>;
+	pub type RegisteredPool<T: Config> = StorageMap<_, Blake2_128Concat, T::Hash, (), ValueQuery>;
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(crate) fn deposit_event)]
 	pub enum Event<T: Config> {
-		NewPool(T::DapiPool),
-		BondAndStake(T::AccountId, T::DapiPool, BalanceOf<T>),
+		NewPool(T::Hash),
+		BondAndStake(T::AccountId, T::Hash, BalanceOf<T>),
 		NewDapiStakingEra(EraIndex),
-		Reward(T::AccountId, T::DapiPool, EraIndex, BalanceOf<T>),
+		Reward(T::AccountId, T::Hash, EraIndex, BalanceOf<T>),
 	}
 
 	#[pallet::error]
@@ -177,71 +174,10 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 		/// Register pool into staking targets.
 		#[pallet::weight(100)]
-		pub fn register(origin: OriginFor<T>, pool_id: T::DapiPool) -> DispatchResultWithPostInfo {
+		pub fn register(origin: OriginFor<T>, pool_id: T::Hash) -> DispatchResultWithPostInfo {
 			let _ = ensure_root(origin)?;
 			RegisteredPool::<T>::insert(pool_id.clone(), ());
 			Self::deposit_event(Event::<T>::NewPool(pool_id));
-			Ok(().into())
-		}
-
-		/// Lock up and stake balance of the origin account.
-		///
-		/// `value` must be more than the `minimum_balance` specified by `T::Currency`
-		/// unless account already has bonded value equal or more than 'minimum_balance'.
-		///
-		/// Effects of staking will be felt at the beginning of the next era.
-		#[pallet::weight(100)]
-		pub fn bond_and_stake(
-			origin: OriginFor<T>,
-			pool_id: T::DapiPool,
-			#[pallet::compact] value: BalanceOf<T>,
-		) -> DispatchResultWithPostInfo {
-			let staker = ensure_signed(origin)?;
-
-			// Get the staking ledger or create an entry if it doesn't exist.
-			let mut ledger = Self::ledger(&staker);
-
-			// Ensure that staker has enough balance to bond & stake.
-			let free_balance =
-				T::Currency::free_balance(&staker).saturating_sub(T::MinimumRemainingAmount::get());
-
-			// Remove already locked funds from the free balance
-			let available_balance = free_balance.saturating_sub(ledger.locked);
-			let value_to_stake = value.min(available_balance);
-			ensure!(value_to_stake > Zero::zero(), Error::<T>::StakingWithNoValue);
-
-			// Get the latest era staking point info or create it if pool hasn't been staked yet.
-			let current_era = Self::current_era();
-			let mut staking_info = Self::staking_info(&pool_id, current_era);
-
-			// Increment ledger and total staker value for pool. Overflow shouldn't be possible but
-			// the check is here just for safety.
-			ledger.locked =
-				ledger.locked.checked_add(&value_to_stake).ok_or(ArithmeticError::Overflow)?;
-			staking_info.total = staking_info
-				.total
-				.checked_add(&value_to_stake)
-				.ok_or(ArithmeticError::Overflow)?;
-
-			// Increment staker's staking amount
-			let entry = staking_info.stakers.entry(staker.clone()).or_default();
-			*entry = entry.checked_add(&value_to_stake).ok_or(ArithmeticError::Overflow)?;
-
-			// Update total staked value in era.
-			EraRewardsAndStakes::<T>::mutate(&current_era, |value| {
-				if let Some(x) = value {
-					x.staked = x.staked.saturating_add(value_to_stake);
-				}
-			});
-
-			// Update ledger and payee
-			Self::update_ledger(&staker, ledger);
-
-			// Update staked information for pool in current era
-			PoolEraStake::<T>::insert(pool_id.clone(), current_era, staking_info);
-
-			Self::deposit_event(Event::<T>::BondAndStake(staker, pool_id, value_to_stake));
-
 			Ok(().into())
 		}
 
@@ -252,7 +188,7 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn claim(
 			origin: OriginFor<T>,
-			pool_id: T::DapiPool,
+			pool_id: T::Hash,
 			#[pallet::compact] era: EraIndex,
 		) -> DispatchResultWithPostInfo {
 			let _ = ensure_signed(origin)?;
@@ -306,6 +242,76 @@ pub mod pallet {
 		}
 	}
 
+	pub trait StakingInterface<Balance, AccountId, Hash> {
+		/// Lock up and stake balance of the account.
+		///
+		/// `amount` must be more than the `minimum_balance` specified by `T::Currency`
+		/// unless account already has bonded value equal or more than 'minimum_balance'.
+		///
+		/// Effects of staking will be felt at the beginning of the next era.
+		fn stake(account_id: AccountId, pool_id: Hash, amount: Balance) -> DispatchResult;
+	}
+
+	impl<T: Config>
+		StakingInterface<
+			<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
+			T::AccountId,
+			T::Hash,
+		> for Pallet<T>
+	{
+		fn stake(
+			staker: T::AccountId,
+			pool_id: T::Hash,
+			value: <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
+		) -> DispatchResult {
+			// Get the staking ledger or create an entry if it doesn't exist.
+			let mut ledger = Self::ledger(&staker);
+
+			// Ensure that staker has enough balance to bond & stake.
+			let free_balance =
+				T::Currency::free_balance(&staker).saturating_sub(T::MinimumRemainingAmount::get());
+
+			// Remove already locked funds from the free balance
+			let available_balance = free_balance.saturating_sub(ledger.locked);
+			let value_to_stake = value.min(available_balance);
+			ensure!(value_to_stake > Zero::zero(), Error::<T>::StakingWithNoValue);
+
+			// Get the latest era staking point info or create it if pool hasn't been staked yet.
+			let current_era = Self::current_era();
+			let mut staking_info = Self::staking_info(&pool_id, current_era);
+
+			// Increment ledger and total staker value for pool. Overflow shouldn't be possible but
+			// the check is here just for safety.
+			ledger.locked =
+				ledger.locked.checked_add(&value_to_stake).ok_or(ArithmeticError::Overflow)?;
+			staking_info.total = staking_info
+				.total
+				.checked_add(&value_to_stake)
+				.ok_or(ArithmeticError::Overflow)?;
+
+			// Increment staker's staking amount
+			let entry = staking_info.stakers.entry(staker.clone()).or_default();
+			*entry = entry.checked_add(&value_to_stake).ok_or(ArithmeticError::Overflow)?;
+
+			// Update total staked value in era.
+			EraRewardsAndStakes::<T>::mutate(&current_era, |value| {
+				if let Some(x) = value {
+					x.staked = x.staked.saturating_add(value_to_stake);
+				}
+			});
+
+			// Update ledger and payee
+			Self::update_ledger(&staker, ledger);
+
+			// Update staked information for pool in current era
+			PoolEraStake::<T>::insert(pool_id.clone(), current_era, staking_info);
+
+			Self::deposit_event(Event::<T>::BondAndStake(staker, pool_id, value_to_stake));
+
+			Ok(())
+		}
+	}
+
 	impl<T: Config> Pallet<T> {
 		/// Get AccountId of the pallet
 		fn account_id() -> T::AccountId {
@@ -350,7 +356,7 @@ pub mod pallet {
 		/// Returns `EraStakingPoints` for given era if possible or latest stored data or finally
 		/// default value if storage have no data for it.
 		pub fn staking_info(
-			pool_id: &T::DapiPool,
+			pool_id: &T::Hash,
 			era: EraIndex,
 		) -> EraStakingPoints<T::AccountId, BalanceOf<T>> {
 			if let Some(staking_info) = PoolEraStake::<T>::get(pool_id, era) {

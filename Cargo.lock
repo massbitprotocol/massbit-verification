@@ -3872,6 +3872,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "pallet-balances",
+ "pallet-dapi-staking",
  "pallet-randomness-collective-flip",
  "parity-scale-codec",
  "scale-info",
