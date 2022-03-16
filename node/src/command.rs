@@ -8,7 +8,7 @@ use sc_service::PartialComponents;
 
 impl SubstrateCli for Cli {
 	fn impl_name() -> String {
-		"Substrate Node".into()
+		"Massbit Collator".into()
 	}
 
 	fn impl_version() -> String {
@@ -24,11 +24,11 @@ impl SubstrateCli for Cli {
 	}
 
 	fn support_url() -> String {
-		"support.anonymous.an".into()
+		"https://github.com/massbitprotocol/massbit-verification/issue/new".into()
 	}
 
 	fn copyright_start_year() -> i32 {
-		2017
+		2022
 	}
 
 	fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
@@ -39,8 +39,8 @@ impl SubstrateCli for Cli {
 		})
 	}
 
-	fn native_runtime_version(_: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-		&local_runtime::VERSION
+	fn native_runtime_version(chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
+		polkadot_cli::Cli::native_runtime_version(chain_spec)
 	}
 }
 

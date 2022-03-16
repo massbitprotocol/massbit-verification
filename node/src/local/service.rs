@@ -5,7 +5,6 @@ use sc_client_api::{BlockBackend, ExecutorProvider};
 use sc_consensus_aura::{ImportQueueParams, SlotProportion, StartAuraParams};
 pub use sc_executor::NativeElseWasmExecutor;
 use sc_finality_grandpa::SharedVoterState;
-use sc_keystore::LocalKeystore;
 use sc_service::{error::Error as ServiceError, Configuration, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_consensus::SlotData;
@@ -18,12 +17,11 @@ use crate::primitives::*;
 pub struct Executor;
 
 impl sc_executor::NativeExecutionDispatch for Executor {
-	/// Only enable the benchmarking host functions when we actually want to benchmark.
-	#[cfg(feature = "runtime-benchmarks")]
-	type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-	/// Otherwise we only use the default Substrate host functions.
 	#[cfg(not(feature = "runtime-benchmarks"))]
 	type ExtendHostFunctions = ();
+
+	#[cfg(feature = "runtime-benchmarks")]
+	type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
 
 	fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
 		local_runtime::api::dispatch(method, data)
@@ -164,7 +162,7 @@ pub fn start_node(config: Configuration) -> Result<TaskManager, ServiceError> {
 		other: (block_import, grandpa_link, mut telemetry),
 	} = new_partial(&config)?;
 
-	let grandpa_protocol_name = sc_finality_grandpa::protocol_standard_name(
+	let protocol_name = sc_finality_grandpa::protocol_standard_name(
 		&client.block_hash(0).ok().flatten().expect("Genesis block exists; qed"),
 		&config.chain_spec,
 	);
@@ -287,7 +285,7 @@ pub fn start_node(config: Configuration) -> Result<TaskManager, ServiceError> {
 		keystore,
 		local_role: role,
 		telemetry: telemetry.as_ref().map(|x| x.handle()),
-		protocol_name: grandpa_protocol_name,
+		protocol_name,
 	};
 
 	if enable_grandpa {

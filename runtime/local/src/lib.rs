@@ -281,7 +281,6 @@ impl pallet_sudo::Config for Runtime {
 }
 
 parameter_types! {
-	pub const MinConsumerDeposit: Balance = 1000;
 	pub const MinGatewayDeposit: Balance = 1000;
 	pub const MinNodeDeposit: Balance = 1000;
 }
@@ -289,7 +288,6 @@ parameter_types! {
 impl pallet_dapi::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
-	type MinConsumerDeposit = MinConsumerDeposit;
 	type MinGatewayDeposit = MinGatewayDeposit;
 	type MinNodeDeposit = MinNodeDeposit;
 	type Staking = DapiStaking;
