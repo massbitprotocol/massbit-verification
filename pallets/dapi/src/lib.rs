@@ -2,10 +2,7 @@
 
 #[cfg(feature = "std")]
 use frame_support::serde::{Deserialize, Serialize};
-use frame_support::{
-	sp_runtime::traits::Hash,
-	traits::{Currency, LockableCurrency},
-};
+use frame_support::{sp_runtime::traits::Hash, traits::Currency};
 use scale_info::TypeInfo;
 use sp_std::prelude::*;
 
@@ -22,6 +19,8 @@ pub mod pallet {
 	type AccountIdOf<T> = <T as frame_system::Config>::AccountId;
 	type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+
+	type MassbitId = Vec<u8>;
 
 	#[derive(Copy, Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
 	#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
@@ -55,9 +54,7 @@ pub mod pallet {
 	pub trait Config: frame_system::Config {
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
-		type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>;
-
-		type MinConsumerDeposit: Get<BalanceOf<Self>>;
+		type Currency: Currency<Self::AccountId>;
 
 		type MinGatewayDeposit: Get<BalanceOf<Self>>;
 
@@ -69,7 +66,7 @@ pub mod pallet {
 	#[pallet::pallet]
 	#[pallet::generate_store(pub(super) trait Store)]
 	#[pallet::without_storage_info]
-	pub struct Pallet<T>(_);
+	pub struct Pallet<T>(PhantomData<T>);
 
 	#[pallet::error]
 	pub enum Error<T> {
@@ -80,27 +77,25 @@ pub mod pallet {
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		/// A project is successfully registered. \[project_id, project_hash, account_id,
-		/// blockchain, quota\]
-		ProjectRegistered(Vec<u8>, T::Hash, T::AccountId, BlockChain, u64),
-		/// A gateway is successfully registered. \[gateway_id, gateway_hash, account_id,
-		/// blockchain\]
-		GatewayRegistered(Vec<u8>, T::Hash, T::AccountId, BlockChain),
-		/// A node is successfully registered. \[node_id, node_hash, account_id, blockchain\]
-		NodeRegistered(Vec<u8>, T::Hash, T::AccountId, BlockChain),
+		/// A project is successfully registered. \[project_id, account_id, blockchain, quota\]
+		ProjectRegistered(MassbitId, T::AccountId, BlockChain, u64),
+		/// A gateway is successfully registered. \[gateway_id, account_id, blockchain, deposit\]
+		GatewayRegistered(MassbitId, T::AccountId, BlockChain, BalanceOf<T>),
+		/// A node is successfully registered. \[node_id, account_id, blockchain, deposit\]
+		NodeRegistered(MassbitId, T::AccountId, BlockChain, BalanceOf<T>),
 	}
 
 	#[pallet::storage]
 	#[pallet::getter(fn consumers)]
-	pub(super) type Consumers<T: Config> =
-		StorageMap<_, Blake2_128Concat, T::Hash, Project<AccountIdOf<T>>, OptionQuery>;
+	pub(super) type Projects<T: Config> =
+		StorageMap<_, Blake2_128Concat, MassbitId, Project<AccountIdOf<T>>, OptionQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn gateways)]
 	pub(super) type Gateways<T: Config> = StorageMap<
 		_,
 		Blake2_128Concat,
-		T::Hash,
+		MassbitId,
 		Gateway<AccountIdOf<T>, BalanceOf<T>>,
 		OptionQuery,
 	>;
@@ -108,7 +103,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn nodes)]
 	pub(super) type Nodes<T: Config> =
-		StorageMap<_, Blake2_128Concat, T::Hash, Node<AccountIdOf<T>, BalanceOf<T>>, OptionQuery>;
+		StorageMap<_, Blake2_128Concat, MassbitId, Node<AccountIdOf<T>, BalanceOf<T>>, OptionQuery>;
 
 	#[pallet::hooks]
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
@@ -118,28 +113,21 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn register_project(
 			origin: OriginFor<T>,
-			project_id: Vec<u8>,
+			project_id: MassbitId,
 			blockchain: BlockChain,
 			deposit: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
-			let project_hash = T::Hashing::hash_of(&project_id);
-			ensure!(<Gateways<T>>::get(project_hash).is_none(), Error::<T>::AlreadyRegistered);
+			ensure!(<Gateways<T>>::get(&project_id).is_none(), Error::<T>::AlreadyRegistered);
 
 			let quota = Self::calculate_consumer_quota(deposit);
-			<Consumers<T>>::insert(
-				project_hash,
+			<Projects<T>>::insert(
+				&project_id,
 				Project { owner: account.clone(), blockchain: blockchain.clone(), quota },
 			);
 
-			Self::deposit_event(Event::ProjectRegistered(
-				project_id,
-				project_hash,
-				account,
-				blockchain,
-				quota,
-			));
+			Self::deposit_event(Event::ProjectRegistered(project_id, account, blockchain, quota));
 
 			Ok(().into())
 		}
@@ -147,14 +135,13 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn register_gateway(
 			origin: OriginFor<T>,
-			gateway_id: Vec<u8>,
+			gateway_id: MassbitId,
 			blockchain: BlockChain,
 			#[pallet::compact] deposit: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
-			let gateway_hash = T::Hashing::hash_of(&gateway_id);
-			ensure!(<Gateways<T>>::get(gateway_hash).is_none(), Error::<T>::AlreadyRegistered);
+			ensure!(<Gateways<T>>::get(&gateway_id).is_none(), Error::<T>::AlreadyRegistered);
 
 			ensure!(deposit >= T::MinGatewayDeposit::get(), Error::<T>::InsufficientBoding);
 
@@ -165,16 +152,11 @@ pub mod pallet {
 			)?;
 
 			<Gateways<T>>::insert(
-				gateway_hash,
+				&gateway_id,
 				Gateway { owner: account.clone(), blockchain: blockchain.clone(), deposit },
 			);
 
-			Self::deposit_event(Event::GatewayRegistered(
-				gateway_id,
-				gateway_hash,
-				account,
-				blockchain,
-			));
+			Self::deposit_event(Event::GatewayRegistered(gateway_id, account, blockchain, deposit));
 
 			Ok(().into())
 		}
@@ -182,14 +164,13 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn register_node(
 			origin: OriginFor<T>,
-			node_id: Vec<u8>,
+			node_id: MassbitId,
 			deposit: BalanceOf<T>,
 			blockchain: BlockChain,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
-			let node_hash = T::Hashing::hash_of(&node_id);
-			ensure!(<Nodes<T>>::get(node_hash).is_none(), Error::<T>::AlreadyRegistered);
+			ensure!(<Nodes<T>>::get(&node_id).is_none(), Error::<T>::AlreadyRegistered);
 
 			ensure!(deposit >= T::MinNodeDeposit::get(), Error::<T>::InsufficientBoding);
 
@@ -200,11 +181,11 @@ pub mod pallet {
 			)?;
 
 			<Nodes<T>>::insert(
-				node_hash,
+				&node_id,
 				Node { owner: account.clone(), blockchain: blockchain.clone(), deposit },
 			);
 
-			Self::deposit_event(Event::NodeRegistered(node_id, node_hash, account, blockchain));
+			Self::deposit_event(Event::NodeRegistered(node_id, account, blockchain, deposit));
 
 			Ok(().into())
 		}

@@ -1,13 +1,13 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use frame_support::traits::{Currency, OnTimestampSet, OnUnbalanced};
+
 pub use pallet::*;
 
 #[frame_support::pallet]
 pub mod pallet {
-	use frame_support::{
-		pallet_prelude::*,
-		traits::{Currency, OnTimestampSet, OnUnbalanced},
-	};
+	use super::*;
+	use frame_support::pallet_prelude::*;
 
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
