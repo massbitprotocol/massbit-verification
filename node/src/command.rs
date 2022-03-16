@@ -1,9 +1,8 @@
 use crate::{
-	chain_spec,
 	cli::{Cli, Subcommand},
-	service,
+	local::{self, chain_spec, development_config, service},
+	primitives::Block,
 };
-use local_runtime::Block;
 use sc_cli::{ChainSpec, RuntimeVersion, SubstrateCli};
 use sc_service::PartialComponents;
 
@@ -34,8 +33,7 @@ impl SubstrateCli for Cli {
 
 	fn load_spec(&self, id: &str) -> Result<Box<dyn sc_service::ChainSpec>, String> {
 		Ok(match id {
-			"dev" => Box::new(chain_spec::development_config()?),
-			"" | "local" => Box::new(chain_spec::local_testnet_config()?),
+			"dev" => Box::new(development_config()?),
 			path =>
 				Box::new(chain_spec::ChainSpec::from_json_file(std::path::PathBuf::from(path))?),
 		})
@@ -102,7 +100,7 @@ pub fn run() -> sc_cli::Result<()> {
 			if cfg!(feature = "runtime-benchmarks") {
 				let runner = cli.create_runner(cmd)?;
 
-				runner.sync_run(|config| cmd.run::<Block, service::ExecutorDispatch>(config))
+				runner.sync_run(|config| cmd.run::<Block, service::Executor>(config))
 			} else {
 				Err("Benchmarking wasn't enabled when building the node. You can enable it with \
 				     `--features runtime-benchmarks`."
@@ -111,7 +109,7 @@ pub fn run() -> sc_cli::Result<()> {
 		None => {
 			let runner = cli.create_runner(&cli.run)?;
 			runner.run_node_until_exit(|config| async move {
-				service::new_full(config).map_err(sc_cli::Error::Service)
+				local::start_node(config).map_err(sc_cli::Error::Service)
 			})
 		},
 	}

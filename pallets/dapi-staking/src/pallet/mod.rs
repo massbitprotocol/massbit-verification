@@ -4,8 +4,8 @@ use frame_support::{
 	ensure,
 	pallet_prelude::*,
 	traits::{
-		tokens::Balance, Currency, ExistenceRequirement, Get, Imbalance, LockIdentifier,
-		LockableCurrency, OnUnbalanced, ReservableCurrency, WithdrawReasons,
+		Currency, ExistenceRequirement, Get, Imbalance, LockIdentifier, LockableCurrency,
+		OnUnbalanced, WithdrawReasons,
 	},
 	weights::Weight,
 	PalletId,
@@ -15,7 +15,7 @@ use sp_runtime::{
 	traits::{AccountIdConversion, CheckedAdd, Saturating, Zero},
 	ArithmeticError, Perbill,
 };
-use sp_std::{convert::From, fmt::Debug};
+use sp_std::convert::From;
 
 const STAKING_ID: LockIdentifier = *b"apistake";
 
@@ -242,24 +242,24 @@ pub mod pallet {
 		}
 	}
 
-	pub trait StakingInterface<Balance, AccountId, Hash> {
+	pub trait Staking<Balance, AccountId, Hash> {
 		/// Lock up and stake balance of the account.
 		///
 		/// `amount` must be more than the `minimum_balance` specified by `T::Currency`
 		/// unless account already has bonded value equal or more than 'minimum_balance'.
 		///
 		/// Effects of staking will be felt at the beginning of the next era.
-		fn stake(account_id: AccountId, pool_id: Hash, amount: Balance) -> DispatchResult;
+		fn bond_and_stake(account_id: AccountId, pool_id: Hash, amount: Balance) -> DispatchResult;
 	}
 
 	impl<T: Config>
-		StakingInterface<
+		Staking<
 			<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
 			T::AccountId,
 			T::Hash,
 		> for Pallet<T>
 	{
-		fn stake(
+		fn bond_and_stake(
 			staker: T::AccountId,
 			pool_id: T::Hash,
 			value: <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
