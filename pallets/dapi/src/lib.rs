@@ -4,7 +4,7 @@
 use frame_support::serde::{Deserialize, Serialize};
 use frame_support::{
 	sp_runtime::traits::Hash,
-	traits::{Currency, LockIdentifier, LockableCurrency, Randomness, WithdrawReasons},
+	traits::{Currency, LockableCurrency},
 };
 use scale_info::TypeInfo;
 use sp_std::prelude::*;

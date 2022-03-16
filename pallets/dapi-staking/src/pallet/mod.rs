@@ -4,8 +4,8 @@ use frame_support::{
 	ensure,
 	pallet_prelude::*,
 	traits::{
-		tokens::Balance, Currency, ExistenceRequirement, Get, Imbalance, LockIdentifier,
-		LockableCurrency, OnUnbalanced, ReservableCurrency, WithdrawReasons,
+		Currency, ExistenceRequirement, Get, Imbalance, LockIdentifier, LockableCurrency,
+		OnUnbalanced, WithdrawReasons,
 	},
 	weights::Weight,
 	PalletId,
@@ -15,7 +15,7 @@ use sp_runtime::{
 	traits::{AccountIdConversion, CheckedAdd, Saturating, Zero},
 	ArithmeticError, Perbill,
 };
-use sp_std::{convert::From, fmt::Debug};
+use sp_std::convert::From;
 
 const STAKING_ID: LockIdentifier = *b"apistake";
 
@@ -150,8 +150,8 @@ pub mod pallet {
 			let previous_era = Self::current_era();
 
 			// Value is compared to 1 since genesis block is ignored
-			if now % block_per_era == BlockNumberFor::<T>::from(1u32)
-				|| force_new_era || previous_era.is_zero()
+			if now % block_per_era == BlockNumberFor::<T>::from(1u32) ||
+				force_new_era || previous_era.is_zero()
 			{
 				let next_era = previous_era + 1;
 				CurrentEra::<T>::put(next_era);
