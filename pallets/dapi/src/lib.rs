@@ -4,6 +4,7 @@
 use frame_support::serde::{Deserialize, Serialize};
 use frame_support::{sp_runtime::traits::Hash, traits::Currency};
 use scale_info::TypeInfo;
+use sp_runtime::traits::IsMember;
 use sp_std::prelude::*;
 
 use pallet_dapi_staking::Staking;
@@ -34,6 +35,7 @@ pub mod pallet {
 		pub owner: AccountId,
 		pub blockchain: BlockChain,
 		pub quota: u64,
+		pub usage: u64,
 	}
 
 	#[derive(Clone, PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
@@ -61,6 +63,8 @@ pub mod pallet {
 		type MinNodeDeposit: Get<BalanceOf<Self>>;
 
 		type Staking: Staking<BalanceOf<Self>, Self::AccountId, Self::Hash>;
+
+		type IsOracle: IsMember<Self::AccountId>;
 	}
 
 	#[pallet::pallet]
@@ -72,6 +76,8 @@ pub mod pallet {
 	pub enum Error<T> {
 		AlreadyRegistered,
 		InsufficientBoding,
+		ProjectNotFound,
+		NotOracle,
 	}
 
 	#[pallet::event]
@@ -83,6 +89,8 @@ pub mod pallet {
 		GatewayRegistered(MassbitId, T::AccountId, BlockChain, BalanceOf<T>),
 		/// A node is successfully registered. \[node_id, account_id, blockchain, deposit\]
 		NodeRegistered(MassbitId, T::AccountId, BlockChain, BalanceOf<T>),
+		/// Project usage is reported.
+		ProjectUsageReported(MassbitId, u64),
 	}
 
 	#[pallet::storage]
@@ -105,9 +113,6 @@ pub mod pallet {
 	pub(super) type Nodes<T: Config> =
 		StorageMap<_, Blake2_128Concat, MassbitId, Node<AccountIdOf<T>, BalanceOf<T>>, OptionQuery>;
 
-	#[pallet::hooks]
-	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {}
-
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		#[pallet::weight(100)]
@@ -124,7 +129,7 @@ pub mod pallet {
 			let quota = Self::calculate_consumer_quota(deposit);
 			<Projects<T>>::insert(
 				&project_id,
-				Project { owner: account.clone(), blockchain: blockchain.clone(), quota },
+				Project { owner: account.clone(), blockchain: blockchain.clone(), quota, usage: 0 },
 			);
 
 			Self::deposit_event(Event::ProjectRegistered(project_id, account, blockchain, quota));
@@ -186,6 +191,25 @@ pub mod pallet {
 			);
 
 			Self::deposit_event(Event::NodeRegistered(node_id, account, blockchain, deposit));
+
+			Ok(().into())
+		}
+
+		#[pallet::weight(100)]
+		pub fn submit_project_usage(
+			origin: OriginFor<T>,
+			project_id: MassbitId,
+			usage: u64,
+		) -> DispatchResultWithPostInfo {
+			let oracle = ensure_signed(origin)?;
+
+			ensure!(T::IsOracle::is_member(&oracle), Error::<T>::NotOracle);
+
+			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::ProjectNotFound)?;
+			project.usage.saturating_add(usage);
+			Projects::<T>::insert(&project_id, project);
+
+			Self::deposit_event(Event::ProjectUsageReported(project_id, usage));
 
 			Ok(().into())
 		}

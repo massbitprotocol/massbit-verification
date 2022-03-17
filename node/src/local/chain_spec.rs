@@ -2,7 +2,7 @@
 
 use local_runtime::{
 	wasm_binary_unwrap, AccountId, AuraConfig, BalancesConfig, GenesisConfig, GrandpaConfig,
-	Signature, SudoConfig, SystemConfig,
+	OracleConfig, Signature, SudoConfig, SystemConfig,
 };
 use sc_service::ChainType;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
@@ -56,6 +56,7 @@ pub fn development_config() -> Result<ChainSpec, String> {
 					get_account_id_from_seed::<sr25519::Public>("Eve"),
 					get_account_id_from_seed::<sr25519::Public>("Ferdie"),
 				],
+				vec![get_account_id_from_seed::<sr25519::Public>("Ferdie")],
 			)
 		},
 		vec![],
@@ -71,6 +72,7 @@ fn testnet_genesis(
 	initial_authorities: Vec<(AuraId, GrandpaId)>,
 	root_key: AccountId,
 	endowed_accounts: Vec<AccountId>,
+	initial_oracles: Vec<AccountId>,
 ) -> GenesisConfig {
 	GenesisConfig {
 		system: SystemConfig { code: wasm_binary_unwrap().to_vec() },
@@ -88,6 +90,6 @@ fn testnet_genesis(
 			authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect(),
 		},
 		sudo: SudoConfig { key: Some(root_key) },
-		transaction_payment: Default::default(),
+		oracle: OracleConfig { oracles: initial_oracles.iter().map(|x| x.clone()).collect() },
 	}
 }
