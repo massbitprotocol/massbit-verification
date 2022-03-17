@@ -23,7 +23,6 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 
-// A few exports that help ease life for downstream crates.
 use frame_support::traits::OnUnbalanced;
 pub use frame_support::{
 	construct_runtime, parameter_types,
@@ -34,6 +33,7 @@ pub use frame_support::{
 	},
 	PalletId, RuntimeDebug, StorageValue,
 };
+use frame_system::EnsureRoot;
 pub use pallet_balances::Call as BalancesCall;
 pub use pallet_timestamp::Call as TimestampCall;
 use pallet_transaction_payment::CurrencyAdapter;
@@ -44,6 +44,7 @@ pub use sp_runtime::{Perbill, Permill};
 pub use pallet_block_reward;
 pub use pallet_dapi;
 pub use pallet_dapi_staking;
+pub use pallet_oracle;
 
 #[cfg(feature = "std")]
 /// Wasm binary unwrapped. If built with `BUILD_DUMMY_WASM_BINARY`, the function panics.
@@ -235,8 +236,9 @@ impl pallet_transaction_payment::Config for Runtime {
 	type FeeMultiplierUpdate = ();
 }
 
-parameter_types! {
-	pub const DapiStakingPalletId: PalletId = PalletId(*b"pi/dapst");
+impl pallet_sudo::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
 }
 
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
@@ -258,7 +260,13 @@ impl pallet_block_reward::Config for Runtime {
 	type RewardAmount = RewardAmount;
 }
 
+impl pallet_oracle::Config for Runtime {
+	type Event = Event;
+	type AddOrigin = EnsureRoot<AccountId>;
+}
+
 parameter_types! {
+	pub const DapiStakingPalletId: PalletId = PalletId(*b"pi/dapst");
 	pub const BlockPerEra: BlockNumber = 60;
 	pub const HistoryDepth: u32 = 10;
 	pub const UnbondingPeriod: u32 = 2;
@@ -275,14 +283,9 @@ impl pallet_dapi_staking::Config for Runtime {
 	type MinimumRemainingAmount = MinimumRemainingAmount;
 }
 
-impl pallet_sudo::Config for Runtime {
-	type Event = Event;
-	type Call = Call;
-}
-
 parameter_types! {
-	pub const MinGatewayDeposit: Balance = 1000;
-	pub const MinNodeDeposit: Balance = 1000;
+	pub const MinGatewayDeposit: Balance = 10 * MBTL;
+	pub const MinNodeDeposit: Balance = 10 * MBTL;
 }
 
 impl pallet_dapi::Config for Runtime {
@@ -291,25 +294,26 @@ impl pallet_dapi::Config for Runtime {
 	type MinGatewayDeposit = MinGatewayDeposit;
 	type MinNodeDeposit = MinNodeDeposit;
 	type Staking = DapiStaking;
+	type IsOracle = Oracle;
 }
 
-// Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime where
 		Block = Block,
 		NodeBlock = generic::Block<Header, sp_runtime::OpaqueExtrinsic>,
 		UncheckedExtrinsic = UncheckedExtrinsic
 	{
-		System: frame_system,
-		Timestamp: pallet_timestamp,
-		Aura: pallet_aura,
-		Grandpa: pallet_grandpa,
-		Balances: pallet_balances,
-		TransactionPayment: pallet_transaction_payment,
-		Sudo: pallet_sudo,
-		Dapi: pallet_dapi,
+		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
+		Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
+		Aura: pallet_aura::{Pallet, Config<T>},
+		Grandpa: pallet_grandpa::{Pallet, Call, Storage, Config, Event},
+		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
+		TransactionPayment: pallet_transaction_payment::{Pallet, Storage},
+		Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>},
+		Dapi: pallet_dapi::{Pallet, Call, Storage, Event<T>},
 		DapiStaking: pallet_dapi_staking::{Pallet, Call, Storage, Event<T>},
 		BlockReward: pallet_block_reward::{Pallet},
+		Oracle: pallet_oracle::{Pallet, Storage, Config<T>, Event<T>},
 	}
 );
 
