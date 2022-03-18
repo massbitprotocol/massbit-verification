@@ -22,13 +22,7 @@ pub mod pallet {
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 	type MassbitId = Vec<u8>;
-
-	#[derive(Copy, Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
-	#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-	pub enum BlockChain {
-		Ethereum,
-		Polkadot,
-	}
+	type BlockChain = Vec<u8>;
 
 	#[derive(Clone, PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
 	pub struct Project<AccountId> {
@@ -206,7 +200,7 @@ pub mod pallet {
 			ensure!(T::IsOracle::is_member(&oracle), Error::<T>::NotOracle);
 
 			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::ProjectNotFound)?;
-			project.usage.saturating_add(usage);
+			project.usage = project.usage.saturating_add(usage);
 			Projects::<T>::insert(&project_id, project);
 
 			Self::deposit_event(Event::ProjectUsageReported(project_id, usage));
