@@ -28,8 +28,8 @@ pub mod pallet {
 	pub struct Project<AccountId> {
 		pub owner: AccountId,
 		pub blockchain: BlockChain,
-		pub quota: u64,
-		pub usage: u64,
+		pub quota: u128,
+		pub usage: u128,
 	}
 
 	#[derive(Clone, PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
@@ -78,13 +78,13 @@ pub mod pallet {
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		/// A project is successfully registered. \[project_id, account_id, blockchain, quota\]
-		ProjectRegistered(MassbitId, T::AccountId, BlockChain, u64),
+		ProjectRegistered(MassbitId, T::AccountId, BlockChain, u128),
 		/// A gateway is successfully registered. \[gateway_id, account_id, blockchain, deposit\]
 		GatewayRegistered(MassbitId, T::AccountId, BlockChain, BalanceOf<T>),
 		/// A node is successfully registered. \[node_id, account_id, blockchain, deposit\]
 		NodeRegistered(MassbitId, T::AccountId, BlockChain, BalanceOf<T>),
 		/// Project usage is reported.
-		ProjectUsageReported(MassbitId, u64),
+		ProjectUsageReported(MassbitId, u128),
 	}
 
 	#[pallet::storage]
@@ -193,15 +193,17 @@ pub mod pallet {
 		pub fn submit_project_usage(
 			origin: OriginFor<T>,
 			project_id: MassbitId,
-			usage: u64,
+			usage: u128,
 		) -> DispatchResultWithPostInfo {
 			let oracle = ensure_signed(origin)?;
 
 			ensure!(T::IsOracle::is_member(&oracle), Error::<T>::NotOracle);
 
-			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::ProjectNotFound)?;
-			project.usage = project.usage.saturating_add(usage);
-			Projects::<T>::insert(&project_id, project);
+			Projects::<T>::mutate(&project_id, |project| {
+				if let Some(project) = project {
+					project.usage = project.usage.saturating_add(usage)
+				}
+			});
 
 			Self::deposit_event(Event::ProjectUsageReported(project_id, usage));
 
@@ -210,8 +212,8 @@ pub mod pallet {
 	}
 
 	impl<T: Config> Pallet<T> {
-		fn calculate_consumer_quota(amount: BalanceOf<T>) -> u64 {
-			TryInto::<u64>::try_into(amount).ok().unwrap_or_default()
+		fn calculate_consumer_quota(amount: BalanceOf<T>) -> u128 {
+			TryInto::<u128>::try_into(amount).ok().unwrap_or_default()
 		}
 	}
 }
