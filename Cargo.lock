@@ -3624,6 +3624,7 @@ dependencies = [
  "pallet-block-reward",
  "pallet-dapi",
  "pallet-dapi-staking",
+ "pallet-fisherman",
  "pallet-grandpa",
  "pallet-oracle",
  "pallet-sudo",
@@ -4586,6 +4587,25 @@ dependencies = [
  "sp-io",
  "sp-npos-elections",
  "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "pallet-fisherman"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "pallet-balances",
+ "pallet-randomness-collective-flip",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-staking",
  "sp-std",
 ]
 
