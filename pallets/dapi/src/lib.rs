@@ -74,6 +74,7 @@ pub mod pallet {
 		InsufficientBoding,
 		ProjectNotFound,
 		NotOracle,
+		NotFisherman,
 	}
 
 	#[pallet::event]
@@ -87,6 +88,8 @@ pub mod pallet {
 		NodeRegistered(MassbitId, T::AccountId, BlockChain, BalanceOf<T>),
 		/// Project usage is reported.
 		ProjectUsageReported(MassbitId, u128),
+		/// Provide performance is reported.
+		ProviderPerformanceReported(MassbitId, u64, u8, u8),
 	}
 
 	#[pallet::storage]
@@ -216,13 +219,20 @@ pub mod pallet {
 		pub fn submit_provider_report(
 			origin: OriginFor<T>,
 			provider_id: MassbitId,
-			usage: u128,
+			requests: u64,
+			success_percentage: u8,
+			average_latency: u8,
 		) -> DispatchResultWithPostInfo {
-			let oracle = ensure_signed(origin)?;
+			let fishermen = ensure_signed(origin)?;
 
-			ensure!(T::IsFisherman::is_member(&oracle), Error::<T>::NotOracle);
+			ensure!(T::IsFisherman::is_member(&fishermen), Error::<T>::NotFisherman);
 
-			Self::deposit_event(Event::ProjectUsageReported(provider_id, usage));
+			Self::deposit_event(Event::ProviderPerformanceReported(
+				provider_id,
+				requests,
+				success_percentage,
+				average_latency,
+			));
 
 			Ok(().into())
 		}
