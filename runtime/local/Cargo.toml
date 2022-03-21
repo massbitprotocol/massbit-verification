@@ -45,6 +45,7 @@ frame-system-benchmarking = { git = "https://github.com/paritytech/substrate", b
 pallet-dapi = { path = "../../pallets/dapi", default-features = false}
 pallet-dapi-staking = { path = "../../pallets/dapi-staking", default-features = false }
 pallet-block-reward = { path = "../../pallets/block-reward", default-features = false }
+pallet-fisherman = { path = "../../pallets/fisherman", default-features = false }
 pallet-oracle = { path = "../../pallets/oracle", default-features = false }
 
 [build-dependencies]

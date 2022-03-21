@@ -44,6 +44,7 @@ pub use sp_runtime::{Perbill, Permill};
 pub use pallet_block_reward;
 pub use pallet_dapi;
 pub use pallet_dapi_staking;
+pub use pallet_fisherman;
 pub use pallet_oracle;
 
 #[cfg(feature = "std")]
@@ -260,6 +261,11 @@ impl pallet_block_reward::Config for Runtime {
 	type RewardAmount = RewardAmount;
 }
 
+impl pallet_fisherman::Config for Runtime {
+	type Event = Event;
+	type AddOrigin = EnsureRoot<AccountId>;
+}
+
 impl pallet_oracle::Config for Runtime {
 	type Event = Event;
 	type AddOrigin = EnsureRoot<AccountId>;
@@ -295,6 +301,7 @@ impl pallet_dapi::Config for Runtime {
 	type MinNodeDeposit = MinNodeDeposit;
 	type Staking = DapiStaking;
 	type IsOracle = Oracle;
+	type IsFisherman = Fisherman;
 }
 
 construct_runtime!(
@@ -314,6 +321,7 @@ construct_runtime!(
 		DapiStaking: pallet_dapi_staking::{Pallet, Call, Storage, Event<T>},
 		BlockReward: pallet_block_reward::{Pallet},
 		Oracle: pallet_oracle::{Pallet, Storage, Config<T>, Event<T>},
+		Fisherman: pallet_fisherman::{Pallet, Storage, Config<T>, Event<T>},
 	}
 );
 

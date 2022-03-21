@@ -21,7 +21,7 @@ pub mod pallet {
 	type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
-	type MassbitId = Vec<u8>;
+	type MassbitId = [u8; 36];
 	type BlockChain = Vec<u8>;
 
 	#[derive(Clone, PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
@@ -59,6 +59,8 @@ pub mod pallet {
 		type Staking: Staking<BalanceOf<Self>, Self::AccountId, Self::Hash>;
 
 		type IsOracle: IsMember<Self::AccountId>;
+
+		type IsFisherman: IsMember<Self::AccountId>;
 	}
 
 	#[pallet::pallet]
@@ -206,6 +208,21 @@ pub mod pallet {
 			});
 
 			Self::deposit_event(Event::ProjectUsageReported(project_id, usage));
+
+			Ok(().into())
+		}
+
+		#[pallet::weight(100)]
+		pub fn submit_provider_report(
+			origin: OriginFor<T>,
+			provider_id: MassbitId,
+			usage: u128,
+		) -> DispatchResultWithPostInfo {
+			let oracle = ensure_signed(origin)?;
+
+			ensure!(T::IsFisherman::is_member(&oracle), Error::<T>::NotOracle);
+
+			Self::deposit_event(Event::ProjectUsageReported(provider_id, usage));
 
 			Ok(().into())
 		}
