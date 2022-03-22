@@ -290,15 +290,13 @@ impl pallet_dapi_staking::Config for Runtime {
 }
 
 parameter_types! {
-	pub const MinGatewayDeposit: Balance = 10 * MBTL;
-	pub const MinNodeDeposit: Balance = 10 * MBTL;
+	pub const MinProviderDeposit: Balance = 10 * MBTL;
 }
 
 impl pallet_dapi::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
-	type MinGatewayDeposit = MinGatewayDeposit;
-	type MinNodeDeposit = MinNodeDeposit;
+	type MinProviderDeposit = MinProviderDeposit;
 	type Staking = DapiStaking;
 	type IsOracle = Oracle;
 	type IsFisherman = Fisherman;
