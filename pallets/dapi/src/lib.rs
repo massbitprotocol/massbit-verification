@@ -21,7 +21,7 @@ pub mod pallet {
 	type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
-	type MassbitId = [u8; 36];
+	type ProviderId = [u8; 36];
 	type BlockChain = Vec<u8>;
 
 	#[derive(Clone, PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
@@ -74,33 +74,34 @@ pub mod pallet {
 		ProjectNotFound,
 		NotOracle,
 		NotFisherman,
+		ProviderNotExist,
 	}
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
 		/// A project is successfully registered. \[project_id, account_id, blockchain, quota\]
-		ProjectRegistered(MassbitId, T::AccountId, BlockChain, u128),
+		ProjectRegistered(ProviderId, T::AccountId, BlockChain, u128),
 		/// A provider is successfully registered. \[provider_id, provider_type, operator,
 		/// blockchain, deposit\]
-		ProviderRegistered(MassbitId, ProviderType, T::AccountId, BlockChain, BalanceOf<T>),
+		ProviderRegistered(ProviderId, ProviderType, T::AccountId, BlockChain, BalanceOf<T>),
 		/// Project usage is reported.
-		ProjectUsageReported(MassbitId, u128),
+		ProjectUsageReported(ProviderId, u128),
 		/// Provide performance is reported.
-		ProviderPerformanceReported(MassbitId, u64, u32, u32),
+		ProviderPerformanceReported(ProviderId, ProviderType, u64, u32, u32),
 	}
 
 	#[pallet::storage]
 	#[pallet::getter(fn projects)]
 	pub(super) type Projects<T: Config> =
-		StorageMap<_, Blake2_128Concat, MassbitId, Project<AccountIdOf<T>>, OptionQuery>;
+		StorageMap<_, Blake2_128Concat, ProviderId, Project<AccountIdOf<T>>>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn providers)]
 	pub(super) type Providers<T: Config> = StorageMap<
 		_,
 		Blake2_128Concat,
-		MassbitId,
+		ProviderId,
 		Provider<AccountIdOf<T>, BalanceOf<T>>,
 		OptionQuery,
 	>;
@@ -110,7 +111,7 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn register_project(
 			origin: OriginFor<T>,
-			project_id: MassbitId,
+			project_id: ProviderId,
 			blockchain: BlockChain,
 			deposit: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
@@ -132,7 +133,7 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn register_provider(
 			origin: OriginFor<T>,
-			provider_id: MassbitId,
+			provider_id: ProviderId,
 			provider_type: ProviderType,
 			deposit: BalanceOf<T>,
 			blockchain: BlockChain,
@@ -173,7 +174,7 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn submit_project_usage(
 			origin: OriginFor<T>,
-			project_id: MassbitId,
+			project_id: ProviderId,
 			usage: u128,
 		) -> DispatchResultWithPostInfo {
 			let oracle = ensure_signed(origin)?;
@@ -194,7 +195,7 @@ pub mod pallet {
 		#[pallet::weight(100)]
 		pub fn submit_provider_report(
 			origin: OriginFor<T>,
-			provider_id: MassbitId,
+			provider_id: ProviderId,
 			requests: u64,
 			success_percentage: u32,
 			average_latency: u32,
@@ -203,8 +204,11 @@ pub mod pallet {
 
 			ensure!(T::IsFisherman::is_member(&fishermen), Error::<T>::NotFisherman);
 
+			let provider = Self::providers(&provider_id).ok_or(Error::<T>::ProviderNotExist)?;
+
 			Self::deposit_event(Event::ProviderPerformanceReported(
 				provider_id,
+				provider.provider_type,
 				requests,
 				success_percentage,
 				average_latency,
