@@ -32,16 +32,17 @@ pub mod pallet {
 		pub usage: u128,
 	}
 
-	#[derive(Clone, PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
-	pub struct Gateway<AccountId, Balance> {
-		pub owner: AccountId,
-		pub blockchain: BlockChain,
-		pub deposit: Balance,
+	#[derive(Copy, Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
+	#[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
+	pub enum ProviderType {
+		Gateway,
+		Node,
 	}
 
-	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
-	pub struct Node<AccountId, Balance> {
-		pub owner: AccountId,
+	#[derive(Clone, PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
+	pub struct Provider<AccountId, Balance> {
+		pub provider_type: ProviderType,
+		pub operator: AccountId,
 		pub blockchain: BlockChain,
 		pub deposit: Balance,
 	}
@@ -52,9 +53,7 @@ pub mod pallet {
 
 		type Currency: Currency<Self::AccountId>;
 
-		type MinGatewayDeposit: Get<BalanceOf<Self>>;
-
-		type MinNodeDeposit: Get<BalanceOf<Self>>;
+		type MinProviderDeposit: Get<BalanceOf<Self>>;
 
 		type Staking: Staking<BalanceOf<Self>, Self::AccountId, Self::Hash>;
 
@@ -82,35 +81,29 @@ pub mod pallet {
 	pub enum Event<T: Config> {
 		/// A project is successfully registered. \[project_id, account_id, blockchain, quota\]
 		ProjectRegistered(MassbitId, T::AccountId, BlockChain, u128),
-		/// A gateway is successfully registered. \[gateway_id, account_id, blockchain, deposit\]
-		GatewayRegistered(MassbitId, T::AccountId, BlockChain, BalanceOf<T>),
-		/// A node is successfully registered. \[node_id, account_id, blockchain, deposit\]
-		NodeRegistered(MassbitId, T::AccountId, BlockChain, BalanceOf<T>),
+		/// A provider is successfully registered. \[provider_id, provider_type, operator,
+		/// blockchain, deposit\]
+		ProviderRegistered(MassbitId, ProviderType, T::AccountId, BlockChain, BalanceOf<T>),
 		/// Project usage is reported.
 		ProjectUsageReported(MassbitId, u128),
 		/// Provide performance is reported.
-		ProviderPerformanceReported(MassbitId, u64, u8, u8),
+		ProviderPerformanceReported(MassbitId, u64, u32, u32),
 	}
 
 	#[pallet::storage]
-	#[pallet::getter(fn consumers)]
+	#[pallet::getter(fn projects)]
 	pub(super) type Projects<T: Config> =
 		StorageMap<_, Blake2_128Concat, MassbitId, Project<AccountIdOf<T>>, OptionQuery>;
 
 	#[pallet::storage]
-	#[pallet::getter(fn gateways)]
-	pub(super) type Gateways<T: Config> = StorageMap<
+	#[pallet::getter(fn providers)]
+	pub(super) type Providers<T: Config> = StorageMap<
 		_,
 		Blake2_128Concat,
 		MassbitId,
-		Gateway<AccountIdOf<T>, BalanceOf<T>>,
+		Provider<AccountIdOf<T>, BalanceOf<T>>,
 		OptionQuery,
 	>;
-
-	#[pallet::storage]
-	#[pallet::getter(fn nodes)]
-	pub(super) type Nodes<T: Config> =
-		StorageMap<_, Blake2_128Concat, MassbitId, Node<AccountIdOf<T>, BalanceOf<T>>, OptionQuery>;
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
@@ -123,7 +116,7 @@ pub mod pallet {
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
-			ensure!(<Gateways<T>>::get(&project_id).is_none(), Error::<T>::AlreadyRegistered);
+			ensure!(<Projects<T>>::get(&project_id).is_none(), Error::<T>::AlreadyRegistered);
 
 			let quota = Self::calculate_consumer_quota(deposit);
 			<Projects<T>>::insert(
@@ -137,46 +130,18 @@ pub mod pallet {
 		}
 
 		#[pallet::weight(100)]
-		pub fn register_gateway(
+		pub fn register_provider(
 			origin: OriginFor<T>,
-			gateway_id: MassbitId,
-			blockchain: BlockChain,
-			#[pallet::compact] deposit: BalanceOf<T>,
-		) -> DispatchResultWithPostInfo {
-			let account = ensure_signed(origin)?;
-
-			ensure!(<Gateways<T>>::get(&gateway_id).is_none(), Error::<T>::AlreadyRegistered);
-
-			ensure!(deposit >= T::MinGatewayDeposit::get(), Error::<T>::InsufficientBoding);
-
-			T::Staking::bond_and_stake(
-				account.clone(),
-				T::Hashing::hash_of(&blockchain),
-				deposit.clone(),
-			)?;
-
-			<Gateways<T>>::insert(
-				&gateway_id,
-				Gateway { owner: account.clone(), blockchain: blockchain.clone(), deposit },
-			);
-
-			Self::deposit_event(Event::GatewayRegistered(gateway_id, account, blockchain, deposit));
-
-			Ok(().into())
-		}
-
-		#[pallet::weight(100)]
-		pub fn register_node(
-			origin: OriginFor<T>,
-			node_id: MassbitId,
+			provider_id: MassbitId,
+			provider_type: ProviderType,
 			deposit: BalanceOf<T>,
 			blockchain: BlockChain,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
-			ensure!(<Nodes<T>>::get(&node_id).is_none(), Error::<T>::AlreadyRegistered);
+			ensure!(<Providers<T>>::get(&provider_id).is_none(), Error::<T>::AlreadyRegistered);
 
-			ensure!(deposit >= T::MinNodeDeposit::get(), Error::<T>::InsufficientBoding);
+			ensure!(deposit >= T::MinProviderDeposit::get(), Error::<T>::InsufficientBoding);
 
 			T::Staking::bond_and_stake(
 				account.clone(),
@@ -184,12 +149,23 @@ pub mod pallet {
 				deposit.clone(),
 			)?;
 
-			<Nodes<T>>::insert(
-				&node_id,
-				Node { owner: account.clone(), blockchain: blockchain.clone(), deposit },
+			<Providers<T>>::insert(
+				&provider_id,
+				Provider {
+					provider_type,
+					operator: account.clone(),
+					blockchain: blockchain.clone(),
+					deposit,
+				},
 			);
 
-			Self::deposit_event(Event::NodeRegistered(node_id, account, blockchain, deposit));
+			Self::deposit_event(Event::ProviderRegistered(
+				provider_id,
+				provider_type,
+				account,
+				blockchain,
+				deposit,
+			));
 
 			Ok(().into())
 		}
@@ -220,8 +196,8 @@ pub mod pallet {
 			origin: OriginFor<T>,
 			provider_id: MassbitId,
 			requests: u64,
-			success_percentage: u8,
-			average_latency: u8,
+			success_percentage: u32,
+			average_latency: u32,
 		) -> DispatchResultWithPostInfo {
 			let fishermen = ensure_signed(origin)?;
 
