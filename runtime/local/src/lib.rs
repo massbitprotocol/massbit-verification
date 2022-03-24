@@ -44,8 +44,6 @@ pub use sp_runtime::{Perbill, Permill};
 pub use pallet_block_reward;
 pub use pallet_dapi;
 pub use pallet_dapi_staking;
-pub use pallet_fisherman;
-pub use pallet_oracle;
 
 #[cfg(feature = "std")]
 /// Wasm binary unwrapped. If built with `BUILD_DUMMY_WASM_BINARY`, the function panics.
@@ -261,16 +259,6 @@ impl pallet_block_reward::Config for Runtime {
 	type RewardAmount = RewardAmount;
 }
 
-impl pallet_fisherman::Config for Runtime {
-	type Event = Event;
-	type AddOrigin = EnsureRoot<AccountId>;
-}
-
-impl pallet_oracle::Config for Runtime {
-	type Event = Event;
-	type AddOrigin = EnsureRoot<AccountId>;
-}
-
 parameter_types! {
 	pub const DapiStakingPalletId: PalletId = PalletId(*b"pi/dapst");
 	pub const BlockPerEra: BlockNumber = 60;
@@ -303,9 +291,9 @@ impl pallet_dapi_staking::Config for Runtime {
 impl pallet_dapi::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
-	type Staking = DapiStaking;
-	type IsOracle = Oracle;
-	type IsFisherman = Fisherman;
+	type StakingInterface = DapiStaking;
+	type AddOracleOrigin = EnsureRoot<AccountId>;
+	type AddFishermanOrigin = EnsureRoot<AccountId>;
 }
 
 construct_runtime!(
@@ -321,11 +309,9 @@ construct_runtime!(
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		TransactionPayment: pallet_transaction_payment::{Pallet, Storage},
 		Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>},
-		Dapi: pallet_dapi::{Pallet, Call, Storage, Event<T>},
+		Dapi: pallet_dapi::{Pallet, Call, Storage, Config<T>, Event<T>},
 		DapiStaking: pallet_dapi_staking::{Pallet, Call, Storage, Event<T>},
 		BlockReward: pallet_block_reward::{Pallet},
-		Oracle: pallet_oracle::{Pallet, Storage, Config<T>, Event<T>},
-		Fisherman: pallet_fisherman::{Pallet, Storage, Config<T>, Event<T>},
 	}
 );
 

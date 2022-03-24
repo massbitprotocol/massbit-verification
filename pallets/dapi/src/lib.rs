@@ -2,8 +2,7 @@
 
 use frame_support::traits::Currency;
 use scale_info::TypeInfo;
-use sp_runtime::traits::IsMember;
-use sp_std::prelude::*;
+use sp_std::{collections::btree_set::BTreeSet, prelude::*};
 
 use pallet_dapi_staking::Staking;
 
@@ -46,15 +45,18 @@ pub mod pallet {
 
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
-		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
-
 		type Currency: Currency<Self::AccountId>;
 
-		type Staking: Staking<Self::AccountId, ProviderId>;
+		type StakingInterface: Staking<Self::AccountId, ProviderId>;
 
-		type IsOracle: IsMember<Self::AccountId>;
+		/// The origin which can add an oracle.
+		type AddOracleOrigin: EnsureOrigin<Self::Origin>;
 
-		type IsFisherman: IsMember<Self::AccountId>;
+		/// The origin which can add an fisherman.
+		type AddFishermanOrigin: EnsureOrigin<Self::Origin>;
+
+		/// The overarching event type.
+		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 	}
 
 	#[pallet::pallet]
@@ -96,6 +98,37 @@ pub mod pallet {
 	pub(super) type Providers<T: Config> =
 		StorageMap<_, Blake2_128Concat, ProviderId, Provider<AccountIdOf<T>>, OptionQuery>;
 
+	/// The set of fishermen.
+	#[pallet::storage]
+	#[pallet::getter(fn fishermen)]
+	pub type Fishermen<T: Config> = StorageValue<_, BTreeSet<T::AccountId>, ValueQuery>;
+
+	/// The set of oracles.
+	#[pallet::storage]
+	#[pallet::getter(fn oracles)]
+	pub type Oracles<T: Config> = StorageValue<_, BTreeSet<T::AccountId>, ValueQuery>;
+
+	#[pallet::genesis_config]
+	pub struct GenesisConfig<T: Config> {
+		pub fishermen: Vec<T::AccountId>,
+		pub oracles: Vec<T::AccountId>,
+	}
+
+	#[cfg(feature = "std")]
+	impl<T: Config> Default for GenesisConfig<T> {
+		fn default() -> Self {
+			Self { fishermen: Vec::new(), oracles: Vec::new() }
+		}
+	}
+
+	#[pallet::genesis_build]
+	impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+		fn build(&self) {
+			Pallet::<T>::initialize_fishermen(&self.fishermen);
+			Pallet::<T>::initialize_oracles(&self.oracles);
+		}
+	}
+
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		#[pallet::weight(100)]
@@ -131,7 +164,7 @@ pub mod pallet {
 
 			ensure!(<Providers<T>>::get(&provider_id).is_none(), Error::<T>::AlreadyRegistered);
 
-			T::Staking::register(account.clone(), provider_id.clone())?;
+			T::StakingInterface::register(account.clone(), provider_id.clone())?;
 
 			<Providers<T>>::insert(
 				&provider_id,
@@ -158,9 +191,9 @@ pub mod pallet {
 			project_id: ProviderId,
 			usage: u128,
 		) -> DispatchResultWithPostInfo {
-			let oracle = ensure_signed(origin)?;
+			let account_id = ensure_signed(origin)?;
 
-			ensure!(T::IsOracle::is_member(&oracle), Error::<T>::NotOracle);
+			ensure!(Self::is_oracle(&account_id), Error::<T>::NotOracle);
 
 			Projects::<T>::mutate(&project_id, |project| {
 				if let Some(project) = project {
@@ -181,9 +214,9 @@ pub mod pallet {
 			success_percentage: u32,
 			average_latency: u32,
 		) -> DispatchResultWithPostInfo {
-			let fishermen = ensure_signed(origin)?;
+			let account_id = ensure_signed(origin)?;
 
-			ensure!(T::IsFisherman::is_member(&fishermen), Error::<T>::NotFisherman);
+			ensure!(Self::is_fisherman(&account_id), Error::<T>::NotFisherman);
 
 			let provider = Self::providers(&provider_id).ok_or(Error::<T>::ProviderNotExist)?;
 
@@ -202,6 +235,28 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 		fn calculate_consumer_quota(amount: BalanceOf<T>) -> u128 {
 			TryInto::<u128>::try_into(amount).ok().unwrap_or_default()
+		}
+
+		fn is_fisherman(account_id: &T::AccountId) -> bool {
+			Self::fishermen().iter().any(|id| id == account_id)
+		}
+
+		fn is_oracle(account_id: &T::AccountId) -> bool {
+			Self::oracles().iter().any(|id| id == account_id)
+		}
+
+		fn initialize_fishermen(fishermen: &Vec<T::AccountId>) {
+			let fishermen_ids = fishermen
+				.iter()
+				.map(|fisherman| fisherman.clone())
+				.collect::<BTreeSet<T::AccountId>>();
+			Fishermen::<T>::put(&fishermen_ids);
+		}
+
+		fn initialize_oracles(oracles: &Vec<T::AccountId>) {
+			let oracle_ids =
+				oracles.iter().map(|oracle| oracle.clone()).collect::<BTreeSet<T::AccountId>>();
+			Oracles::<T>::put(&oracle_ids);
 		}
 	}
 }

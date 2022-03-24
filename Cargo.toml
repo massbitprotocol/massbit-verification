@@ -4,8 +4,6 @@ members = [
     'pallets/block-reward',
     'pallets/dapi',
     'pallets/dapi-staking',
-    'pallets/fisherman',
-    'pallets/oracle',
     'runtime/local',
 ]
 [profile.release]
