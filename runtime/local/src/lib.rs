@@ -77,8 +77,8 @@ impl_opaque_keys! {
 }
 
 /// Constant values used within the runtime.
-pub const MILLIMBTL: Balance = 1_000_000_000_000_000;
-pub const MBTL: Balance = 1_000 * MILLIMBTL;
+pub const MILLIMBT: Balance = 1_000_000_000_000_000;
+pub const MBT: Balance = 1_000 * MILLIMBT;
 
 /// This determines the average expected block time that we are targeting.
 /// Blocks will be produced at a minimum duration defined by `SLOT_DURATION`.
@@ -252,7 +252,7 @@ impl OnUnbalanced<NegativeImbalance> for OnBlockReward {
 }
 
 parameter_types! {
-	pub const RewardAmount: Balance = 200_000 * MILLIMBTL;
+	pub const RewardAmount: Balance = 200_000 * MILLIMBT;
 }
 
 impl pallet_block_reward::Config for Runtime {
@@ -274,29 +274,35 @@ impl pallet_oracle::Config for Runtime {
 parameter_types! {
 	pub const DapiStakingPalletId: PalletId = PalletId(*b"pi/dapst");
 	pub const BlockPerEra: BlockNumber = 60;
-	pub const HistoryDepth: u32 = 10;
+	pub const RegisterDeposit: Balance = 100 * MBT;
+	pub const OperatorRewardPercentage: Perbill = Perbill::from_percent(80);
+	pub const MaxNumberOfStakersPerProvider: u32 = 512;
+	pub const MinimumStakingAmount: Balance = 10 * MBT;
+	pub const MinimumRemainingAmount: Balance = 1 * MBT;
+	pub const MaxUnlockingChunks: u32 = 2;
 	pub const UnbondingPeriod: u32 = 2;
-	pub const MinimumRemainingAmount: Balance = 1 * MBTL;
+	pub const MaxEraStakeValues: u32 = 5;
 }
 
 impl pallet_dapi_staking::Config for Runtime {
-	type Event = Event;
 	type Currency = Balances;
+	type Provider = [u8; 36];
 	type BlockPerEra = BlockPerEra;
-	type HistoryDepth = HistoryDepth;
-	type UnbondingPeriod = UnbondingPeriod;
+	type RegisterDeposit = RegisterDeposit;
+	type OperatorRewardPercentage = OperatorRewardPercentage;
+	type MaxNumberOfStakersPerProvider = MaxNumberOfStakersPerProvider;
+	type MinimumStakingAmount = MinimumStakingAmount;
 	type PalletId = DapiStakingPalletId;
 	type MinimumRemainingAmount = MinimumRemainingAmount;
-}
-
-parameter_types! {
-	pub const MinProviderDeposit: Balance = 10 * MBTL;
+	type MaxUnlockingChunks = MaxUnlockingChunks;
+	type UnbondingPeriod = UnbondingPeriod;
+	type MaxEraStakeValues = MaxEraStakeValues;
+	type Event = Event;
 }
 
 impl pallet_dapi::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
-	type MinProviderDeposit = MinProviderDeposit;
 	type Staking = DapiStaking;
 	type IsOracle = Oracle;
 	type IsFisherman = Fisherman;

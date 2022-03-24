@@ -1,8 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-#[cfg(feature = "std")]
-use frame_support::serde::{Deserialize, Serialize};
-use frame_support::{sp_runtime::traits::Hash, traits::Currency};
+use frame_support::traits::Currency;
 use scale_info::TypeInfo;
 use sp_runtime::traits::IsMember;
 use sp_std::prelude::*;
@@ -40,11 +38,10 @@ pub mod pallet {
 	}
 
 	#[derive(Clone, PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
-	pub struct Provider<AccountId, Balance> {
+	pub struct Provider<AccountId> {
 		pub provider_type: ProviderType,
 		pub operator: AccountId,
 		pub blockchain: BlockChain,
-		pub deposit: Balance,
 	}
 
 	#[pallet::config]
@@ -53,9 +50,7 @@ pub mod pallet {
 
 		type Currency: Currency<Self::AccountId>;
 
-		type MinProviderDeposit: Get<BalanceOf<Self>>;
-
-		type Staking: Staking<BalanceOf<Self>, Self::AccountId, Self::Hash>;
+		type Staking: Staking<Self::AccountId, ProviderId>;
 
 		type IsOracle: IsMember<Self::AccountId>;
 
@@ -83,8 +78,8 @@ pub mod pallet {
 		/// A project is successfully registered. \[project_id, account_id, blockchain, quota\]
 		ProjectRegistered(ProviderId, T::AccountId, BlockChain, u128),
 		/// A provider is successfully registered. \[provider_id, provider_type, operator,
-		/// blockchain, deposit\]
-		ProviderRegistered(ProviderId, ProviderType, T::AccountId, BlockChain, BalanceOf<T>),
+		/// blockchain\]
+		ProviderRegistered(ProviderId, ProviderType, T::AccountId, BlockChain),
 		/// Project usage is reported.
 		ProjectUsageReported(ProviderId, u128),
 		/// Provide performance is reported.
@@ -98,13 +93,8 @@ pub mod pallet {
 
 	#[pallet::storage]
 	#[pallet::getter(fn providers)]
-	pub(super) type Providers<T: Config> = StorageMap<
-		_,
-		Blake2_128Concat,
-		ProviderId,
-		Provider<AccountIdOf<T>, BalanceOf<T>>,
-		OptionQuery,
-	>;
+	pub(super) type Providers<T: Config> =
+		StorageMap<_, Blake2_128Concat, ProviderId, Provider<AccountIdOf<T>>, OptionQuery>;
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
@@ -135,20 +125,13 @@ pub mod pallet {
 			origin: OriginFor<T>,
 			provider_id: ProviderId,
 			provider_type: ProviderType,
-			deposit: BalanceOf<T>,
 			blockchain: BlockChain,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
 			ensure!(<Providers<T>>::get(&provider_id).is_none(), Error::<T>::AlreadyRegistered);
 
-			ensure!(deposit >= T::MinProviderDeposit::get(), Error::<T>::InsufficientBoding);
-
-			T::Staking::bond_and_stake(
-				account.clone(),
-				T::Hashing::hash_of(&blockchain),
-				deposit.clone(),
-			)?;
+			T::Staking::register(account.clone(), provider_id.clone())?;
 
 			<Providers<T>>::insert(
 				&provider_id,
@@ -156,7 +139,6 @@ pub mod pallet {
 					provider_type,
 					operator: account.clone(),
 					blockchain: blockchain.clone(),
-					deposit,
 				},
 			);
 
@@ -165,7 +147,6 @@ pub mod pallet {
 				provider_type,
 				account,
 				blockchain,
-				deposit,
 			));
 
 			Ok(().into())
