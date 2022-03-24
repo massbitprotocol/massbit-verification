@@ -35,11 +35,12 @@ enum ProviderState {
 pub struct ProviderInfo<AccountId> {
 	operator: AccountId,
 	state: ProviderState,
+	unreserved: bool,
 }
 
 impl<AccountId> ProviderInfo<AccountId> {
 	fn new(operator: AccountId) -> Self {
-		Self { operator, state: ProviderState::Registered }
+		Self { operator, state: ProviderState::Registered, unreserved: false }
 	}
 }
 
