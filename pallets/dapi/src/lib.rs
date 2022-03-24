@@ -220,6 +220,8 @@ pub mod pallet {
 
 			let provider = Self::providers(&provider_id).ok_or(Error::<T>::ProviderNotExist)?;
 
+			T::StakingInterface::force_unregister(provider_id.clone())?;
+
 			Self::deposit_event(Event::ProviderPerformanceReported(
 				provider_id,
 				provider.provider_type,
