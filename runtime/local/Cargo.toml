@@ -45,8 +45,6 @@ frame-system-benchmarking = { git = "https://github.com/paritytech/substrate", b
 pallet-dapi = { path = "../../pallets/dapi", default-features = false}
 pallet-dapi-staking = { path = "../../pallets/dapi-staking", default-features = false }
 pallet-block-reward = { path = "../../pallets/block-reward", default-features = false }
-pallet-fisherman = { path = "../../pallets/fisherman", default-features = false }
-pallet-oracle = { path = "../../pallets/oracle", default-features = false }
 
 [build-dependencies]
 substrate-wasm-builder = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.17", default-features = false  }
@@ -70,7 +68,6 @@ std = [
 	"pallet-dapi/std",
 	"pallet-dapi-staking/std",
 	"pallet-block-reward/std",
-	"pallet-oracle/std",
 	"sp-api/std",
 	"sp-block-builder/std",
 	"sp-consensus-aura/std",

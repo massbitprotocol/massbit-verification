@@ -1,8 +1,8 @@
 //! Chain specifications.
 
 use local_runtime::{
-	wasm_binary_unwrap, AccountId, AuraConfig, BalancesConfig, FishermanConfig, GenesisConfig,
-	GrandpaConfig, OracleConfig, Signature, SudoConfig, SystemConfig,
+	wasm_binary_unwrap, AccountId, AuraConfig, BalancesConfig, DapiConfig, GenesisConfig,
+	GrandpaConfig, Signature, SudoConfig, SystemConfig,
 };
 use sc_service::ChainType;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
@@ -92,9 +92,9 @@ fn testnet_genesis(
 			authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect(),
 		},
 		sudo: SudoConfig { key: Some(root_key) },
-		oracle: OracleConfig { oracles: initial_oracles.iter().map(|x| x.clone()).collect() },
-		fisherman: FishermanConfig {
+		dapi: DapiConfig {
 			fishermen: initial_fishermen.iter().map(|x| x.clone()).collect(),
+			oracles: initial_oracles.iter().map(|x| x.clone()).collect(),
 		},
 	}
 }
