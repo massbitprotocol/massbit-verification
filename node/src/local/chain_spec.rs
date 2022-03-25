@@ -38,7 +38,7 @@ pub fn authority_keys_from_seed(s: &str) -> (AuraId, GrandpaId) {
 /// Development config (single validator Alice)
 pub fn development_config() -> Result<ChainSpec, String> {
 	let mut properties = serde_json::map::Map::new();
-	properties.insert("tokenSymbol".into(), "MBTL".into());
+	properties.insert("tokenSymbol".into(), "MBT".into());
 	properties.insert("tokenDecimals".into(), 18.into());
 	Ok(ChainSpec::from_genesis(
 		"Development",
@@ -82,7 +82,7 @@ fn testnet_genesis(
 			balances: endowed_accounts
 				.iter()
 				.cloned()
-				.map(|k| (k, 1_000_000_000_000_000_000_000))
+				.map(|k| (k, 10_000_000_000_000_000_000_000))
 				.collect(),
 		},
 		aura: AuraConfig {
