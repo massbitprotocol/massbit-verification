@@ -73,6 +73,7 @@ pub mod pallet {
 		NotOracle,
 		NotFisherman,
 		ProviderNotExist,
+		NotOwnedProvider,
 	}
 
 	#[pallet::event]
@@ -83,6 +84,8 @@ pub mod pallet {
 		/// A provider is successfully registered. \[provider_id, provider_type, operator,
 		/// blockchain\]
 		ProviderRegistered(ProviderId, ProviderType, T::AccountId, BlockChain),
+		/// A provider is unregistered. \[project_id, account_id, blockchain, quota\]
+		ProviderUnregistered(ProviderId, ProviderType),
 		/// Project usage is reported.
 		ProjectUsageReported(ProviderId, u128),
 		/// Provide performance is reported.
@@ -97,7 +100,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn providers)]
 	pub(super) type Providers<T: Config> =
-		StorageMap<_, Blake2_128Concat, ProviderId, Provider<AccountIdOf<T>>, OptionQuery>;
+		StorageMap<_, Blake2_128Concat, ProviderId, Provider<AccountIdOf<T>>>;
 
 	/// The set of fishermen.
 	#[pallet::storage]
@@ -163,17 +166,17 @@ pub mod pallet {
 			provider_type: ProviderType,
 			blockchain: BlockChain,
 		) -> DispatchResultWithPostInfo {
-			let account = ensure_signed(origin)?;
+			let operator = ensure_signed(origin)?;
 
 			ensure!(<Providers<T>>::get(&provider_id).is_none(), Error::<T>::AlreadyRegistered);
 
-			T::StakingInterface::register(account.clone(), provider_id.clone())?;
+			T::StakingInterface::register(operator.clone(), provider_id.clone())?;
 
 			<Providers<T>>::insert(
 				&provider_id,
 				Provider {
 					provider_type,
-					operator: account.clone(),
+					operator: operator.clone(),
 					blockchain: blockchain.clone(),
 				},
 			);
@@ -181,8 +184,28 @@ pub mod pallet {
 			Self::deposit_event(Event::ProviderRegistered(
 				provider_id,
 				provider_type,
-				account,
+				operator,
 				blockchain,
+			));
+
+			Ok(().into())
+		}
+
+		#[pallet::weight(100)]
+		pub fn unregister_provider(
+			origin: OriginFor<T>,
+			provider_id: ProviderId,
+		) -> DispatchResultWithPostInfo {
+			let account = ensure_signed(origin)?;
+
+			let provider = Providers::<T>::get(&provider_id).ok_or(Error::<T>::ProviderNotExist)?;
+			ensure!(provider.operator == account, Error::<T>::NotOwnedProvider);
+
+			T::StakingInterface::unregister(provider_id.clone())?;
+
+			Self::deposit_event(Event::<T>::ProviderUnregistered(
+				provider_id,
+				provider.provider_type,
 			));
 
 			Ok(().into())
@@ -223,7 +246,7 @@ pub mod pallet {
 
 			let provider = Self::providers(&provider_id).ok_or(Error::<T>::ProviderNotExist)?;
 
-			T::StakingInterface::force_unregister(provider_id.clone())?;
+			T::StakingInterface::unregister(provider_id.clone())?;
 
 			Self::deposit_event(Event::ProviderPerformanceReported(
 				provider_id,
