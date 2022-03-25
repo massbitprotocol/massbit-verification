@@ -261,7 +261,7 @@ impl pallet_block_reward::Config for Runtime {
 
 parameter_types! {
 	pub const DapiStakingPalletId: PalletId = PalletId(*b"pi/dapst");
-	pub const BlockPerEra: BlockNumber = 60;
+	pub const BlockPerEra: BlockNumber = 20;
 	pub const RegisterDeposit: Balance = 100 * MBT;
 	pub const OperatorRewardPercentage: Perbill = Perbill::from_percent(80);
 	pub const MaxNumberOfStakersPerProvider: u32 = 512;

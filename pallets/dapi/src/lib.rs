@@ -11,8 +11,9 @@ pub use pallet::*;
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
-	use frame_support::pallet_prelude::*;
+	use frame_support::{pallet_prelude::*, traits::ReservableCurrency};
 	use frame_system::pallet_prelude::*;
+	use sp_runtime::traits::Scale;
 
 	type AccountIdOf<T> = <T as frame_system::Config>::AccountId;
 	type BalanceOf<T> =
@@ -45,7 +46,7 @@ pub mod pallet {
 
 	#[pallet::config]
 	pub trait Config: frame_system::Config {
-		type Currency: Currency<Self::AccountId>;
+		type Currency: ReservableCurrency<Self::AccountId>;
 
 		type StakingInterface: Staking<Self::AccountId, ProviderId>;
 
@@ -136,11 +137,13 @@ pub mod pallet {
 			origin: OriginFor<T>,
 			project_id: ProviderId,
 			blockchain: BlockChain,
-			deposit: BalanceOf<T>,
+			#[pallet::compact] deposit: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
 			ensure!(<Projects<T>>::get(&project_id).is_none(), Error::<T>::AlreadyRegistered);
+
+			T::Currency::reserve(&account, deposit)?;
 
 			let quota = Self::calculate_consumer_quota(deposit);
 			<Projects<T>>::insert(
@@ -236,7 +239,10 @@ pub mod pallet {
 
 	impl<T: Config> Pallet<T> {
 		fn calculate_consumer_quota(amount: BalanceOf<T>) -> u128 {
-			TryInto::<u128>::try_into(amount).ok().unwrap_or_default()
+			TryInto::<u128>::try_into(amount)
+				.ok()
+				.unwrap_or_default()
+				.div(1_000_000_000_000_000u128)
 		}
 
 		fn is_fisherman(account_id: &T::AccountId) -> bool {
