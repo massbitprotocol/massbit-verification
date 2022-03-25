@@ -270,36 +270,6 @@ pub mod pallet {
 
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
-		/// Unregister existing provider from dapi staking
-		///
-		/// This must be called by the operator who registered the provider.
-		///
-		/// Warning: After this action provider can not be assigned again.
-		#[pallet::weight(100)]
-		pub fn unregister(
-			origin: OriginFor<T>,
-			provider_id: T::Provider,
-		) -> DispatchResultWithPostInfo {
-			let operator = ensure_signed(origin)?;
-
-			let mut provider_info = RegisteredProviders::<T>::get(&provider_id)
-				.ok_or(Error::<T>::NotOperatedProvider)?;
-			ensure!(provider_info.operator == operator, Error::<T>::NotOwnedProvider);
-			ensure!(
-				provider_info.state == ProviderState::Registered,
-				Error::<T>::NotOperatedProvider
-			);
-
-			let current_era = Self::current_era();
-			provider_info.state =
-				ProviderState::Unregistered(current_era, current_era + T::UnbondingPeriod::get());
-			RegisteredProviders::<T>::insert(&provider_id, provider_info);
-
-			Self::deposit_event(Event::<T>::ProviderUnregistered(provider_id));
-
-			Ok(().into())
-		}
-
 		/// Withdraw staker's locked fund from a provider that was unregistered.
 		#[pallet::weight(100)]
 		pub fn withdraw_from_unregistered_staker(
@@ -450,7 +420,6 @@ pub mod pallet {
 				.checked_add(&value_to_stake)
 				.ok_or(ArithmeticError::Overflow)?;
 
-			// Update storage
 			GeneralEraInfo::<T>::mutate(&current_era, |value| {
 				if let Some(x) = value {
 					x.staked = x.staked.saturating_add(value_to_stake);
@@ -460,6 +429,7 @@ pub mod pallet {
 
 			Self::update_ledger(&staker, ledger);
 			Self::update_staker_info(&staker, &provider_id, staker_info);
+			ProviderEraStake::<T>::insert(&provider_id, current_era, staking_info);
 
 			Self::deposit_event(Event::<T>::Stake(staker, provider_id, value_to_stake));
 			Ok(().into())
@@ -703,7 +673,7 @@ pub mod pallet {
 
 	pub trait Staking<AccountId, Provider> {
 		fn register(origin: AccountId, provider_id: Provider) -> DispatchResultWithPostInfo;
-		fn force_unregister(provider_id: Provider) -> DispatchResultWithPostInfo;
+		fn unregister(provider_id: Provider) -> DispatchResultWithPostInfo;
 	}
 
 	impl<T: Config> Staking<T::AccountId, T::Provider> for Pallet<T> {
@@ -725,7 +695,7 @@ pub mod pallet {
 			Ok(().into())
 		}
 
-		fn force_unregister(provider_id: T::Provider) -> DispatchResultWithPostInfo {
+		fn unregister(provider_id: T::Provider) -> DispatchResultWithPostInfo {
 			let mut provider_info = RegisteredProviders::<T>::get(&provider_id)
 				.ok_or(Error::<T>::NotOperatedProvider)?;
 			ensure!(
@@ -737,8 +707,6 @@ pub mod pallet {
 			provider_info.state =
 				ProviderState::Unregistered(current_era, current_era + T::UnbondingPeriod::get());
 			RegisteredProviders::<T>::insert(&provider_id, provider_info);
-
-			Self::deposit_event(Event::<T>::ProviderUnregistered(provider_id));
 
 			Ok(().into())
 		}
