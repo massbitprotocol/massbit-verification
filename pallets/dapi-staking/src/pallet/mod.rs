@@ -575,7 +575,6 @@ pub mod pallet {
 			let staker_reward =
 				Perbill::from_rational(staked, staking_info.total) * stakers_joint_reward;
 
-			// Withdraw reward funds from the provider staking pot
 			let reward_imbalance = T::Currency::withdraw(
 				&Self::account_id(),
 				staker_reward,
@@ -596,7 +595,7 @@ pub mod pallet {
 			Ok(().into())
 		}
 
-		/// Claim earned operator rewards for the oldest era.
+		/// Claim earned operator rewards for the specified era.
 		#[pallet::weight(100)]
 		pub fn claim_operator(
 			origin: OriginFor<T>,
@@ -625,11 +624,9 @@ pub mod pallet {
 			let reward_and_stake =
 				Self::general_era_info(era).ok_or(Error::<T>::UnknownEraReward)?;
 
-			// Calculate the contract reward for this era.
 			let (operator_reward, _) =
 				Self::operator_stakers_split(&provider_stake_info, &reward_and_stake);
 
-			// Withdraw reward funds from the provider staking
 			let reward_imbalance = T::Currency::withdraw(
 				&Self::account_id(),
 				operator_reward,
@@ -645,7 +642,6 @@ pub mod pallet {
 				operator_reward,
 			));
 
-			// updated counter for total rewards paid to the provider
 			provider_stake_info.provider_reward_claimed = true;
 			ProviderEraStake::<T>::insert(&provider_id, era, provider_stake_info);
 
@@ -687,10 +683,7 @@ pub mod pallet {
 			);
 			T::Currency::reserve(&operator, T::RegisterDeposit::get())?;
 
-			RegisteredProviders::<T>::insert(
-				provider_id.clone(),
-				ProviderInfo::new(operator.clone()),
-			);
+			RegisteredProviders::<T>::insert(&provider_id, ProviderInfo::new(operator.clone()));
 
 			Ok(().into())
 		}

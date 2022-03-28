@@ -9,9 +9,6 @@ pub type Header = sp_runtime::generic::Header<BlockNumber, sp_runtime::traits::B
 /// Block type.
 pub type Block = sp_runtime::generic::Block<Header, sp_runtime::OpaqueExtrinsic>;
 
-/// A hash of some data used by the chain.
-pub type Hash = sp_core::H256;
-
 /// Balance of an account.
 pub type Balance = u128;
 
