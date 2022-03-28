@@ -288,12 +288,17 @@ impl pallet_dapi_staking::Config for Runtime {
 	type Event = Event;
 }
 
+parameter_types! {
+	pub const MaxBytesInChainId: u32 = 64;
+}
+
 impl pallet_dapi::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
 	type StakingInterface = DapiStaking;
 	type AddOracleOrigin = EnsureRoot<AccountId>;
 	type AddFishermanOrigin = EnsureRoot<AccountId>;
+	type MaxBytesInChainId = MaxBytesInChainId;
 }
 
 construct_runtime!(
