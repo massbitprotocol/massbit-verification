@@ -24,21 +24,28 @@ sp-staking = { git = "https://github.com/paritytech/substrate", branch = "polkad
 frame-benchmarking = { git = 'https://github.com/paritytech/substrate.git', branch = 'polkadot-v0.9.17', default-features = false, optional = true }
 
 [features]
-default = ['std']
+default = ["std"]
 std = [
-    'codec/std',
-    'scale-info/std',
-    'frame-benchmarking/std',
-    'frame-support/std',
-    'frame-system/std',
-    'pallet-balances/std',
-    'serde/std',
-    'sp-core/std',
-    'sp-std/std',
+    "serde",
+    "codec/std",
+    "scale-info/std",
+    "num-traits/std",
+    "sp-core/std",
+    "sp-runtime/std",
+    "sp-arithmetic/std",
+    "sp-io/std",
+    "sp-std/std",
+    "frame-support/std",
+    "frame-system/std",
+    "pallet-balances/std",
+    "pallet-session/std",
+    "pallet-timestamp/std",
+    "sp-staking/std",
 ]
 runtime-benchmarks = [
-    'frame-benchmarking',
-    'frame-support/runtime-benchmarks',
-    'frame-system/runtime-benchmarks',
+    "frame-benchmarking",
+    "frame-support/runtime-benchmarks",
+    "frame-system/runtime-benchmarks",
+    "sp-runtime/runtime-benchmarks",
 ]
 try-runtime = ['frame-support/try-runtime']

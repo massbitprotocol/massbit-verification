@@ -14,8 +14,8 @@
 //! ## Usage
 //!
 //! 1. Pallet should be set as a handler of `OnTimestampSet`.
-//! 2. `OnBlockReward` handler should be defined as an implementation of `OnUnbalanced` trait. For
-//! example: ```nocompile
+//! 2. `OnBlockReward` handler should be defined as an implementation of `OnUnbalanced` trait. For example:
+//! ```nocompile
 //! type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
 //! struct SaveOnDapiStaking;
 //! impl OnUnbalanced<NegativeImbalance> for SaveOnDapiStaking {
