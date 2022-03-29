@@ -217,7 +217,7 @@ pub mod pallet {
 		) -> DispatchResultWithPostInfo {
 			let operator = ensure_signed(origin)?;
 
-			ensure!(<Providers<T>>::contains_key(&provider_id), Error::<T>::AlreadyRegistered);
+			ensure!(!<Providers<T>>::contains_key(&provider_id), Error::<T>::AlreadyRegistered);
 			ensure!(Self::is_valid_chain_id(&chain_id), Error::<T>::InvalidChainId);
 
 			T::StakingInterface::register(operator.clone(), provider_id.clone())?;
