@@ -57,7 +57,7 @@ pub mod pallet {
 		type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>
 			+ ReservableCurrency<Self::AccountId>;
 
-		type Provider: Parameter + Member;
+		type Provider: Default + Parameter + Member;
 
 		/// Number of blocks per era.
 		#[pallet::constant]
@@ -114,6 +114,9 @@ pub mod pallet {
 
 		/// The overarching event type.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+
+		/// Weight information for extrinsics in this pallet.
+		type WeightInfo: WeightInfo;
 	}
 
 	/// Bonded amount for the staker
@@ -245,8 +248,8 @@ pub mod pallet {
 			let previous_era = Self::current_era();
 
 			// Value is compared to 1 since genesis block is ignored
-			if now % blocks_per_era == BlockNumberFor::<T>::from(1u32) ||
-				force_new_era || previous_era.is_zero()
+			if now % blocks_per_era == BlockNumberFor::<T>::from(1u32)
+				|| force_new_era || previous_era.is_zero()
 			{
 				let next_era = previous_era + 1;
 				CurrentEra::<T>::put(next_era);
@@ -271,7 +274,7 @@ pub mod pallet {
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 		/// Withdraw staker's locked fund from a provider that was unregistered.
-		#[pallet::weight(100)]
+		#[pallet::weight(T::WeightInfo::withdraw_from_unregistered_staker())]
 		pub fn withdraw_from_unregistered_staker(
 			origin: OriginFor<T>,
 			provider_id: T::Provider,
@@ -285,7 +288,7 @@ pub mod pallet {
 				if let ProviderState::Unregistered(e1, e2) = provider_info.state {
 					(e1, e2)
 				} else {
-					return Err(Error::<T>::NotUnregisteredProvider.into())
+					return Err(Error::<T>::NotUnregisteredProvider.into());
 				};
 
 			let current_era = Self::current_era();
@@ -326,7 +329,7 @@ pub mod pallet {
 		}
 
 		/// Withdraw operator's locked fund from a provider that was unregistered.
-		#[pallet::weight(100)]
+		#[pallet::weight(T::WeightInfo::withdraw_from_unregistered_operator())]
 		pub fn withdraw_from_unregistered_operator(
 			origin: OriginFor<T>,
 			provider_id: T::Provider,
@@ -341,7 +344,7 @@ pub mod pallet {
 			let unbonding_era = if let ProviderState::Unregistered(_, e) = provider_info.state {
 				e
 			} else {
-				return Err(Error::<T>::NotUnregisteredProvider.into())
+				return Err(Error::<T>::NotUnregisteredProvider.into());
 			};
 
 			let current_era = Self::current_era();
@@ -369,7 +372,7 @@ pub mod pallet {
 		/// The dispatch origin for this call must be _Signed_ by the staker's account.
 		///
 		/// Effects of staking will be felt at the beginning of the next era.
-		#[pallet::weight(100)]
+		#[pallet::weight(T::WeightInfo::stake())]
 		pub fn stake(
 			origin: OriginFor<T>,
 			provider_id: T::Provider,
@@ -390,8 +393,8 @@ pub mod pallet {
 			let mut staker_info = Self::staker_info(&staker, &provider_id);
 
 			ensure!(
-				!staker_info.latest_staked_value().is_zero() ||
-					staking_info.number_of_stakers < T::MaxNumberOfStakersPerProvider::get(),
+				!staker_info.latest_staked_value().is_zero()
+					|| staking_info.number_of_stakers < T::MaxNumberOfStakersPerProvider::get(),
 				Error::<T>::MaxNumberOfStakersExceeded
 			);
 			if staker_info.latest_staked_value().is_zero() {
@@ -443,7 +446,7 @@ pub mod pallet {
 		///
 		/// In case remaining staked balance on provider is below minimum staking amount,
 		/// entire stake for that provider will be unstaked.
-		#[pallet::weight(100)]
+		#[pallet::weight(T::WeightInfo::unstake())]
 		pub fn unstake(
 			origin: OriginFor<T>,
 			provider_id: T::Provider,
@@ -518,7 +521,7 @@ pub mod pallet {
 		///
 		/// If there are unbonding chunks which will be fully unbonded in future eras,
 		/// they will remain and can be withdrawn later.
-		#[pallet::weight(100)]
+		#[pallet::weight(T::WeightInfo::withdraw_unstaked())]
 		pub fn withdraw_unstaked(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
 			let staker = ensure_signed(origin)?;
 
@@ -546,7 +549,7 @@ pub mod pallet {
 		}
 
 		/// Claim earned staker rewards for the oldest era.
-		#[pallet::weight(100)]
+		#[pallet::weight(T::WeightInfo::claim_staker())]
 		pub fn claim_staker(
 			origin: OriginFor<T>,
 			provider_id: T::Provider,
@@ -596,7 +599,7 @@ pub mod pallet {
 		}
 
 		/// Claim earned operator rewards for the specified era.
-		#[pallet::weight(100)]
+		#[pallet::weight(T::WeightInfo::claim_operator())]
 		pub fn claim_operator(
 			origin: OriginFor<T>,
 			provider_id: T::Provider,
@@ -659,7 +662,7 @@ pub mod pallet {
 		/// - Weight: O(1)
 		/// - Write ForceEra
 		/// # </weight>
-		#[pallet::weight(100)]
+		#[pallet::weight(T::WeightInfo::force_new_era())]
 		pub fn force_new_era(origin: OriginFor<T>) -> DispatchResult {
 			ensure_root(origin)?;
 			ForceEra::<T>::put(Forcing::ForceNew);
@@ -774,7 +777,7 @@ pub mod pallet {
 				// Ignore provider if it was unregistered
 				consumed_weight = consumed_weight.saturating_add(T::DbWeight::get().reads(1));
 				if let ProviderState::Unregistered(_, _) = provider_info.state {
-					continue
+					continue;
 				}
 
 				// Copy data from era `X` to era `X + 1`

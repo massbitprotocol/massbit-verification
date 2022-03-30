@@ -11,9 +11,15 @@ use sp_runtime::{
 use sp_std::{ops::Add, prelude::*};
 
 pub mod pallet;
+pub mod weights;
+
+#[cfg(any(feature = "runtime-benchmarks"))]
+pub mod benchmarking;
+#[cfg(test)]
+mod mock;
 
 pub use pallet::pallet::*;
-pub use sp_staking::SessionIndex;
+pub use weights::WeightInfo;
 
 pub type BalanceOf<T> =
 	<<T as Config>::Currency as Currency<<T as system::Config>::AccountId>>::Balance;

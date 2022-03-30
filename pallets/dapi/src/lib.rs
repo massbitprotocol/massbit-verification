@@ -22,7 +22,7 @@ pub mod pallet {
 	/// Blockchain id, e.g `eth.mainnet`
 	type ChainId<T> = BoundedVec<u8, <T as Config>::MaxBytesInChainId>;
 	/// Massbit external UUID type
-	type MassbitId = [u8; 36];
+	type MassbitId = BoundedVec<u8, ConstU32<64>>;
 
 	#[derive(Clone, PartialEq, Encode, Decode, RuntimeDebug, TypeInfo)]
 	pub struct Project<AccountId, ChainId> {
@@ -198,9 +198,9 @@ pub mod pallet {
 			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::ProjectDNE)?;
 			project.usage = project.usage.saturating_add(usage).min(project.quota);
 			if project.usage == project.quota {
-				Self::deposit_event(Event::ProjectReachedQuota(project_id));
+				Self::deposit_event(Event::ProjectReachedQuota(project_id.clone()));
 			} else {
-				Self::deposit_event(Event::ProjectUsageReported(project_id, usage));
+				Self::deposit_event(Event::ProjectUsageReported(project_id.clone(), usage));
 			}
 
 			Projects::<T>::insert(&project_id, project);

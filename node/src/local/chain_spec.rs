@@ -98,3 +98,14 @@ fn testnet_genesis(
 		},
 	}
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+	use super::*;
+	use sp_runtime::BuildStorage;
+
+	#[test]
+	fn test_create_development_chain_spec() {
+		development_config().build_storage().unwrap();
+	}
+}
