@@ -26,7 +26,7 @@ type Block = frame_system::mocking::MockBlock<TestRuntime>;
 /// Value shouldn't be less than 2 for testing purposes, otherwise we cannot test certain corner
 /// cases.
 pub(crate) const EXISTENTIAL_DEPOSIT: Balance = 2;
-pub(crate) const MAX_NUMBER_OF_STAKERS: u32 = 4;
+pub(crate) const MAX_NUMBER_OF_STAKERS: u32 = 5;
 /// Value shouldn't be less than 2 for testing purposes, otherwise we cannot test certain corner
 /// cases.
 pub(crate) const MINIMUM_STAKING_AMOUNT: Balance = 10;

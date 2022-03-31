@@ -22,6 +22,7 @@ const STAKING_ID: LockIdentifier = *b"apistake";
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
+	use frame_support::dispatch::RawOrigin;
 
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -670,23 +671,49 @@ pub mod pallet {
 		}
 	}
 
-	pub trait Staking<AccountId, Provider> {
-		fn register(origin: AccountId, provider_id: Provider) -> DispatchResultWithPostInfo;
+	pub trait Staking<AccountId, Provider, Balance> {
+		fn register(
+			origin: AccountId,
+			provider_id: Provider,
+			deposit: Balance,
+		) -> DispatchResultWithPostInfo;
 		fn unregister(provider_id: Provider) -> DispatchResultWithPostInfo;
 	}
 
-	impl<T: Config> Staking<T::AccountId, T::Provider> for Pallet<T> {
+	impl<T: Config>
+		Staking<
+			T::AccountId,
+			T::Provider,
+			<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
+		> for Pallet<T>
+	{
 		fn register(
 			operator: T::AccountId,
 			provider_id: T::Provider,
+			deposit: <<T as Config>::Currency as Currency<
+				<T as frame_system::Config>::AccountId,
+			>>::Balance,
 		) -> DispatchResultWithPostInfo {
 			ensure!(
 				!RegisteredProviders::<T>::contains_key(&provider_id),
 				Error::<T>::AlreadyRegisteredProvider
 			);
+
+			ensure!(
+				deposit >= T::RegisterDeposit::get() + T::MinimumStakingAmount::get(),
+				Error::<T>::InsufficientValue
+			);
+
 			T::Currency::reserve(&operator, T::RegisterDeposit::get())?;
 
 			RegisteredProviders::<T>::insert(&provider_id, ProviderInfo::new(operator.clone()));
+
+			let stake_amount = deposit.saturating_sub(T::RegisterDeposit::get());
+			Self::stake(
+				RawOrigin::Signed(operator.clone()).into(),
+				provider_id.clone(),
+				stake_amount,
+			)?;
 
 			Ok(().into())
 		}

@@ -66,7 +66,7 @@ pub mod pallet {
 		type Currency: ReservableCurrency<Self::AccountId>;
 
 		/// Interface of dapi staking pallet.
-		type StakingInterface: Staking<Self::AccountId, MassbitId>;
+		type StakingInterface: Staking<Self::AccountId, MassbitId, BalanceOf<Self>>;
 
 		/// The origin which can add an oracle.
 		type AddOracleOrigin: EnsureOrigin<Self::Origin>;
@@ -214,13 +214,14 @@ pub mod pallet {
 			provider_id: MassbitId,
 			provider_type: ProviderType,
 			chain_id: ChainId<T>,
+			#[pallet::compact] deposit: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
 			let operator = ensure_signed(origin)?;
 
 			ensure!(!<Providers<T>>::contains_key(&provider_id), Error::<T>::AlreadyRegistered);
 			ensure!(Self::is_valid_chain_id(&chain_id), Error::<T>::InvalidChainId);
 
-			T::StakingInterface::register(operator.clone(), provider_id.clone())?;
+			T::StakingInterface::register(operator.clone(), provider_id.clone(), deposit)?;
 
 			<Providers<T>>::insert(
 				&provider_id,
