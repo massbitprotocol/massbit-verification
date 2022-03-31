@@ -151,11 +151,11 @@ impl pallet_dapi_staking::Config for TestRuntime {
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Encode, Decode, Debug, scale_info::TypeInfo)]
-pub struct MockProvider(&'static [u8]);
+pub struct MockProvider(pub [u8; 36]);
 
 impl Default for MockProvider {
 	fn default() -> Self {
-		MockProvider("82615baf-4024-4ac3-9e44-a9a3c528f7e5".as_bytes())
+		MockProvider(*b"82615baf-4024-4ac3-9e44-a9a3c528f7e5")
 	}
 }
 

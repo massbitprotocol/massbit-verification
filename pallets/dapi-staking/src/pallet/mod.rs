@@ -248,8 +248,8 @@ pub mod pallet {
 			let previous_era = Self::current_era();
 
 			// Value is compared to 1 since genesis block is ignored
-			if now % blocks_per_era == BlockNumberFor::<T>::from(1u32)
-				|| force_new_era || previous_era.is_zero()
+			if now % blocks_per_era == BlockNumberFor::<T>::from(1u32) ||
+				force_new_era || previous_era.is_zero()
 			{
 				let next_era = previous_era + 1;
 				CurrentEra::<T>::put(next_era);
@@ -288,7 +288,7 @@ pub mod pallet {
 				if let ProviderState::Unregistered(e1, e2) = provider_info.state {
 					(e1, e2)
 				} else {
-					return Err(Error::<T>::NotUnregisteredProvider.into());
+					return Err(Error::<T>::NotUnregisteredProvider.into())
 				};
 
 			let current_era = Self::current_era();
@@ -344,7 +344,7 @@ pub mod pallet {
 			let unbonding_era = if let ProviderState::Unregistered(_, e) = provider_info.state {
 				e
 			} else {
-				return Err(Error::<T>::NotUnregisteredProvider.into());
+				return Err(Error::<T>::NotUnregisteredProvider.into())
 			};
 
 			let current_era = Self::current_era();
@@ -393,8 +393,8 @@ pub mod pallet {
 			let mut staker_info = Self::staker_info(&staker, &provider_id);
 
 			ensure!(
-				!staker_info.latest_staked_value().is_zero()
-					|| staking_info.number_of_stakers < T::MaxNumberOfStakersPerProvider::get(),
+				!staker_info.latest_staked_value().is_zero() ||
+					staking_info.number_of_stakers < T::MaxNumberOfStakersPerProvider::get(),
 				Error::<T>::MaxNumberOfStakersExceeded
 			);
 			if staker_info.latest_staked_value().is_zero() {
@@ -777,7 +777,7 @@ pub mod pallet {
 				// Ignore provider if it was unregistered
 				consumed_weight = consumed_weight.saturating_add(T::DbWeight::get().reads(1));
 				if let ProviderState::Unregistered(_, _) = provider_info.state {
-					continue;
+					continue
 				}
 
 				// Copy data from era `X` to era `X + 1`
