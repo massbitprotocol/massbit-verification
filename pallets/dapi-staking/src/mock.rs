@@ -192,3 +192,40 @@ impl ExternalityBuilder {
 		ext
 	}
 }
+
+/// Used to run to the specified block number
+pub fn run_to_block(n: u64) {
+	while System::block_number() < n {
+		DapiStaking::on_finalize(System::block_number());
+		System::set_block_number(System::block_number() + 1);
+		// This is performed outside of dapi staking but we expect it before on_initialize
+		DapiStaking::on_unbalanced(Balances::issue(BLOCK_REWARD));
+		DapiStaking::on_initialize(System::block_number());
+	}
+}
+
+/// Used to run the specified number of blocks
+pub fn run_for_blocks(n: u64) {
+	run_to_block(System::block_number() + n);
+}
+
+/// Advance blocks to the beginning of an era.
+///
+/// Function has no effect if era is already passed.
+pub fn advance_to_era(n: EraIndex) {
+	while DapiStaking::current_era() < n {
+		run_for_blocks(1);
+	}
+}
+
+/// Initialize first block.
+/// This method should only be called once in a UT otherwise the first block will get initialized multiple times.
+pub fn initialize_first_block() {
+	// This assert prevents method misuse
+	assert_eq!(System::block_number(), 1 as BlockNumber);
+
+	// This is performed outside of dapi staking but we expect it before on_initialize
+	DapiStaking::on_unbalanced(Balances::issue(BLOCK_REWARD));
+	DapiStaking::on_initialize(System::block_number());
+	run_to_block(2);
+}

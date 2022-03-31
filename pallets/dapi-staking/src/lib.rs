@@ -21,14 +21,11 @@ mod mock;
 pub use pallet::pallet::*;
 pub use weights::WeightInfo;
 
-pub mod weights;
 pub mod traits;
 pub use traits::*;
 
 // #[cfg(test)]
 // mod tests_lib;
-#[cfg(test)]
-mod mock;
 #[cfg(test)]
 mod testing_utils;
 #[cfg(test)]
