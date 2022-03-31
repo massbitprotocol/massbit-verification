@@ -21,6 +21,19 @@ mod mock;
 pub use pallet::pallet::*;
 pub use weights::WeightInfo;
 
+pub mod weights;
+pub mod traits;
+pub use traits::*;
+
+// #[cfg(test)]
+// mod tests_lib;
+#[cfg(test)]
+mod mock;
+#[cfg(test)]
+mod testing_utils;
+#[cfg(test)]
+mod tests;
+
 pub type BalanceOf<T> =
 	<<T as Config>::Currency as Currency<<T as system::Config>::AccountId>>::Balance;
 
