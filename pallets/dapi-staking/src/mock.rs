@@ -40,7 +40,7 @@ pub(crate) const MAX_ERA_STAKE_VALUES: u32 = 8;
 // smaller.
 pub(crate) const BLOCKS_PER_ERA: BlockNumber = 3;
 
-pub(crate) const REGISTER_DEPOSIT: Balance = 10;
+pub(crate) const REGISTER_DEPOSIT: Balance = 20;
 
 // ignore MILLIMBT for easier test handling.
 // reward for dapi staking will be BLOCK_REWARD/2 = 1000

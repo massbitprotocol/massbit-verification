@@ -385,6 +385,12 @@ where
 
 		(Self { unlocking_chunks: matching_chunks }, Self { unlocking_chunks: other_chunks })
 	}
+
+	#[cfg(test)]
+	/// Return clone of the internal vector. Should only be used for testing.
+	fn vec(&self) -> Vec<UnlockingChunk<Balance>> {
+		self.unlocking_chunks.clone()
+	}
 }
 
 /// Instruction on how to handle reward payout for stakers.

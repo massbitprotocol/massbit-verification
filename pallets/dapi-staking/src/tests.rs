@@ -195,16 +195,17 @@ fn new_era_is_ok() {
 
         // verify that block reward is added to the block_reward_accumulator
         let block_reward = DapiStaking::block_reward_accumulator();
-        assert_eq!(BLOCK_REWARD, block_reward.stakers + block_reward.dapi);
+        assert_eq!(BLOCK_REWARD, block_reward.stakers + block_reward.operators);
 
-        // register and bond to verify storage item
+        // register to verify storage item
         let staker = 2;
         let provider_acc = 3;
         let staked_amount = 100;
-        //let contract = MockSmartContract::Evm(H160::repeat_byte(0x01));
-        let provider = MockProvider(1);
-        assert_register_node_gateway(provider_acc, &provider);
-        assert_bond_and_stake(staker, &provider, staked_amount);
+        let deposit = 200;
+        //let provider = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+        let provider = MockProvider::default();
+        assert_register_provider(provider_acc, &provider,deposit);
+        assert_stake(staker, &provider, staked_amount);
 
         // CurrentEra should be incremented
         // block_reward_accumulator should be reset to 0
@@ -212,7 +213,7 @@ fn new_era_is_ok() {
 
         let current_era = DapiStaking::current_era();
         assert_eq!(starting_era + 1, current_era);
-        System::assert_last_event(mock::Event::DapiStaking(Event::NewDappStakingEra(
+        System::assert_last_event(mock::Event::DapiStaking(Event::NewDapiStakingEra(
             starting_era + 1,
         )));
 
@@ -227,380 +228,404 @@ fn new_era_is_ok() {
 
         // verify that .staked is copied and .reward is added
         let era_rewards = GeneralEraInfo::<TestRuntime>::get(starting_era).unwrap();
-        assert_eq!(staked_amount, era_rewards.staked);
+        assert_eq!(staked_amount+deposit, era_rewards.staked+RegisterDeposit::get());
         assert_eq!(
             expected_era_reward,
-            era_rewards.rewards.dapi + era_rewards.rewards.stakers
+            era_rewards.rewards.operators + era_rewards.rewards.stakers
         );
-        assert_eq!(expected_operators_reward, era_rewards.rewards.dapi);
+        assert_eq!(expected_operators_reward, era_rewards.rewards.operators);
         assert_eq!(expected_stakers_reward, era_rewards.rewards.stakers);
     })
 }
 
-// #[test]
-// fn new_era_forcing() {
-//     ExternalityBuilder::build().execute_with(|| {
-//         initialize_first_block();
-//         advance_to_era(3);
-//         let starting_era = mock::DapiStaking::current_era();
-//
-//         // call on_initilize. It is not last block in the era, but it should increment the era
-//         <ForceEra<TestRuntime>>::put(Forcing::ForceNew);
-//         run_for_blocks(1);
-//
-//         // check that era is incremented
-//         let current = mock::DapiStaking::current_era();
-//         assert_eq!(starting_era + 1, current);
-//
-//         // check that forcing is cleared
-//         assert_eq!(mock::DapiStaking::force_era(), Forcing::NotForcing);
-//
-//         // check the event for the new era
-//         System::assert_last_event(mock::Event::DapiStaking(Event::NewDappStakingEra(
-//             starting_era + 1,
-//         )));
-//     })
-// }
-//
-// #[test]
-// fn general_staker_info_is_ok() {
-//     ExternalityBuilder::build().execute_with(|| {
-//         initialize_first_block();
-//
-//         let first_contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(10, &first_contract_id);
-//
-//         let second_contract_id = MockSmartContract::Evm(H160::repeat_byte(0x02));
-//         assert_register(11, &second_contract_id);
-//
-//         let (staker_1, staker_2, staker_3) = (1, 2, 3);
-//         let amount = 100;
-//
-//         let starting_era = 3;
-//         advance_to_era(starting_era);
-//         assert_bond_and_stake(staker_1, &first_contract_id, amount);
-//         assert_bond_and_stake(staker_2, &first_contract_id, amount);
-//
-//         let mid_era = 7;
-//         advance_to_era(mid_era);
-//         assert_unbond_and_unstake(staker_2, &first_contract_id, amount);
-//         assert_bond_and_stake(staker_3, &first_contract_id, amount);
-//         assert_bond_and_stake(staker_3, &second_contract_id, amount);
-//
-//         let final_era = 12;
-//         advance_to_era(final_era);
-//
-//         // Check first interval
-//         let mut first_staker_info = DapiStaking::staker_info(&staker_1, &first_contract_id);
-//         let mut second_staker_info = DapiStaking::staker_info(&staker_2, &first_contract_id);
-//         let mut third_staker_info = DapiStaking::staker_info(&staker_3, &first_contract_id);
-//
-//         for era in starting_era..mid_era {
-//             let contract_info = DapiStaking::contract_stake_info(&first_contract_id, era).unwrap();
-//             assert_eq!(2, contract_info.number_of_stakers);
-//
-//             assert_eq!((era, amount), first_staker_info.claim());
-//             assert_eq!((era, amount), second_staker_info.claim());
-//
-//             assert!(!ContractEraStake::<TestRuntime>::contains_key(
-//                 &second_contract_id,
-//                 era
-//             ));
-//         }
-//
-//         // Check second interval
-//         for era in mid_era..=final_era {
-//             let first_contract_info =
-//                 DapiStaking::contract_stake_info(&first_contract_id, era).unwrap();
-//             assert_eq!(2, first_contract_info.number_of_stakers);
-//
-//             assert_eq!((era, amount), first_staker_info.claim());
-//             assert_eq!((era, amount), third_staker_info.claim());
-//
-//             assert_eq!(
-//                 DapiStaking::contract_stake_info(&second_contract_id, era)
-//                     .unwrap()
-//                     .number_of_stakers,
-//                 1
-//             );
-//         }
-//
-//         // Check that before starting era nothing exists
-//         assert!(!ContractEraStake::<TestRuntime>::contains_key(
-//             &first_contract_id,
-//             starting_era - 1
-//         ));
-//         assert!(!ContractEraStake::<TestRuntime>::contains_key(
-//             &second_contract_id,
-//             starting_era - 1
-//         ));
-//     })
-// }
-//
-// #[test]
-// fn register_is_ok() {
-//     ExternalityBuilder::build().execute_with(|| {
-//         initialize_first_block();
-//
-//         let developer = 1;
-//         let ok_contract = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//
-//         assert!(<TestRuntime as Config>::Currency::reserved_balance(&developer).is_zero());
-//         assert_register(developer, &ok_contract);
-//         System::assert_last_event(mock::Event::DapiStaking(Event::NewContract(
-//             developer,
-//             ok_contract,
-//         )));
-//
-//         assert_eq!(
-//             RegisterDeposit::get(),
-//             <TestRuntime as Config>::Currency::reserved_balance(&developer)
-//         );
-//     })
-// }
-//
+#[test]
+fn new_era_forcing() {
+    ExternalityBuilder::build().execute_with(|| {
+        initialize_first_block();
+        advance_to_era(3);
+        let starting_era = mock::DapiStaking::current_era();
+
+        // call on_initilize. It is not last block in the era, but it should increment the era
+        <ForceEra<TestRuntime>>::put(Forcing::ForceNew);
+        run_for_blocks(1);
+
+        // check that era is incremented
+        let current = mock::DapiStaking::current_era();
+        assert_eq!(starting_era + 1, current);
+
+        // check that forcing is cleared
+        assert_eq!(mock::DapiStaking::force_era(), Forcing::NotForcing);
+
+        // check the event for the new era
+        System::assert_last_event(mock::Event::DapiStaking(Event::NewDapiStakingEra(
+            starting_era + 1,
+        )));
+    })
+}
+
+#[test]
+fn general_staker_info_is_ok() {
+    ExternalityBuilder::build().execute_with(|| {
+        initialize_first_block();
+
+        let deposit = 200;
+
+        let first_provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+        assert_register_provider(10, &first_provider_id, deposit);
+
+        let (staker_1, staker_2, staker_3) = (1, 2, 3);
+        let amount = 100;
+
+        let starting_era = 3;
+        advance_to_era(starting_era);
+        assert_stake(staker_1, &first_provider_id, amount);
+        assert_stake(staker_2, &first_provider_id, amount);
+
+
+        let mid_era = 7;
+        advance_to_era(mid_era);
+
+        let second_provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000002");
+        assert_register_provider(11, &second_provider_id,deposit);
+
+
+        assert_unstake(staker_2, &first_provider_id, amount);
+        assert_stake(staker_3, &first_provider_id, amount);
+        assert_stake(staker_3, &second_provider_id, amount);
+
+        let final_era = 12;
+        advance_to_era(final_era);
+
+        // Check first interval
+        let mut first_staker_info = DapiStaking::staker_info(&staker_1, &first_provider_id);
+        let mut second_staker_info = DapiStaking::staker_info(&staker_2, &first_provider_id);
+        let mut third_staker_info = DapiStaking::staker_info(&staker_3, &first_provider_id);
+
+        for era in starting_era..mid_era {
+            let provider_info = DapiStaking::provider_stake_info(&first_provider_id, era).unwrap();
+            //println!("provider_info:{:?}",provider_info);
+            assert_eq!(3, provider_info.number_of_stakers);
+            assert_eq!((era, amount), first_staker_info.claim());
+            assert_eq!((era, amount), second_staker_info.claim());
+
+            assert!(!ProviderEraStake::<TestRuntime>::contains_key(
+                &second_provider_id,
+                era
+            ));
+        }
+
+        // Check second interval
+        for era in mid_era..=final_era {
+            let first_provider_info =
+                DapiStaking::provider_stake_info(&first_provider_id, era).unwrap();
+            assert_eq!(3, first_provider_info.number_of_stakers);
+
+            assert_eq!((era, amount), first_staker_info.claim());
+            assert_eq!((era, amount), third_staker_info.claim());
+
+            assert_eq!(
+                DapiStaking::provider_stake_info(&second_provider_id, era)
+                    .unwrap()
+                    .number_of_stakers,
+                2
+            );
+        }
+
+        // Check that before starting era only 1 first_provider_id staking
+        // assert!(!ProviderEraStake::<TestRuntime>::contains_key(
+        //     &first_provider_id,
+        //     starting_era - 1
+        // ));
+        assert!(!ProviderEraStake::<TestRuntime>::contains_key(
+            &second_provider_id,
+            starting_era - 1
+        ));
+    })
+}
+
+#[test]
+fn register_is_ok() {
+    ExternalityBuilder::build().execute_with(|| {
+        initialize_first_block();
+
+        let operator = 1;
+        let ok_provider = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+        let deposit = 200;
+
+        assert!(<TestRuntime as Config>::Currency::reserved_balance(&operator).is_zero());
+        assert_register_provider(operator, &ok_provider,deposit);
+        System::assert_last_event(mock::Event::DapiStaking(Event::Stake(
+            operator,
+            ok_provider,
+            deposit-RegisterDeposit::get(),
+        )));
+
+        assert_eq!(
+            RegisterDeposit::get(),
+            <TestRuntime as Config>::Currency::reserved_balance(&operator)
+        );
+    })
+}
+
 // #[test]
 // fn register_twice_with_same_account_fails() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let developer = 1;
-//         let contract1 = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         let contract2 = MockSmartContract::Evm(H160::repeat_byte(0x02));
+//         let operator = 1;
+//         let provider1 = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         let provider2 = MockProvider(*b"00000000-0000-0000-0000-000000000002");
+//         let deposit = 200;
 //
-//         assert_register(developer, &contract1);
+//         assert_register_provider(operator, &provider1, deposit);
 //
-//         System::assert_last_event(mock::Event::DapiStaking(Event::NewContract(
-//             developer, contract1,
+//         System::assert_last_event(mock::Event::DapiStaking(Event::Stake(
+//             operator, provider1, deposit-RegisterDeposit::get()
 //         )));
 //
-//         // now register different contract with same account
+//         // now register different provider with same account
+//         // Fixme: Error should be AlreadyRegisteredOperator or it is ok for use the same Operator for 2 provider
 //         assert_noop!(
-//             DapiStaking::register(Origin::signed(developer), contract2),
-//             Error::<TestRuntime>::AlreadyUsedDeveloperAccount
+//             DapiStaking::register(operator, provider2,deposit),
+//             Error::<TestRuntime>::AlreadyRegisteredProvider
 //         );
 //     })
 // }
-//
-// #[test]
-// fn register_same_contract_twice_fails() {
-//     ExternalityBuilder::build().execute_with(|| {
-//         initialize_first_block();
-//
-//         let developer1 = 1;
-//         let developer2 = 2;
-//         let contract = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//
-//         assert_register(developer1, &contract);
-//
-//         System::assert_last_event(mock::Event::DapiStaking(Event::NewContract(
-//             developer1, contract,
-//         )));
-//
-//         // now register same contract by different developer
-//         assert_noop!(
-//             DapiStaking::register(Origin::signed(developer2), contract),
-//             Error::<TestRuntime>::AlreadyRegisteredContract
-//         );
-//     })
-// }
-//
+
+#[test]
+fn register_same_provider_twice_fails() {
+    ExternalityBuilder::build().execute_with(|| {
+        initialize_first_block();
+
+        let operator1 = 1;
+        let operator2 = 2;
+        let provider = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+        let deposit = 200;
+        assert_register_provider(operator1, &provider,deposit);
+
+        System::assert_last_event(mock::Event::DapiStaking(Event::Stake(
+            operator1, provider,deposit-RegisterDeposit::get()
+        )));
+
+        // now register same provider by different operator
+        assert_noop!(
+            DapiStaking::register(operator2, provider,deposit),
+            Error::<TestRuntime>::AlreadyRegisteredProvider
+        );
+    })
+}
+
 // #[test]
 // fn register_with_pre_approve_enabled() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
-//         let developer = 1;
-//         let contract = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let operator = 1;
+//         let provider = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //
-//         // enable pre-approval for the developers
-//         assert_ok!(DapiStaking::enable_developer_pre_approval(
+//         // enable pre-approval for the operators
+//         assert_ok!(DapiStaking::enable_operator_pre_approval(
 //             Origin::root(),
 //             true
 //         ));
 //         assert!(DapiStaking::pre_approval_is_enabled());
 //
-//         // register new developer without pre-approval, should fail
+//         // register new operator without pre-approval, should fail
 //         assert_noop!(
-//             DapiStaking::register(Origin::signed(developer), contract.clone()),
+//             DapiStaking::register(Origin::signed(operator), provider.clone()),
 //             Error::<TestRuntime>::RequiredContractPreApproval,
 //         );
 //
-//         // preapprove developer
-//         assert_ok!(DapiStaking::developer_pre_approval(
+//         // preapprove operator
+//         assert_ok!(DapiStaking::operator_pre_approval(
 //             Origin::root(),
-//             developer.clone()
+//             operator.clone()
 //         ));
 //
-//         // try to pre-approve again same developer, should fail
+//         // try to pre-approve again same operator, should fail
 //         assert_noop!(
-//             DapiStaking::developer_pre_approval(Origin::root(), developer.clone()),
+//             DapiStaking::operator_pre_approval(Origin::root(), operator.clone()),
 //             Error::<TestRuntime>::AlreadyPreApprovedDeveloper
 //         );
 //
-//         // register new contract by pre-approved developer
-//         assert_register(developer, &contract);
+//         // register new provider by pre-approved operator
+//         assert_register_provider(operator, &provider);
 //
-//         // disable pre_approval and register contract2
-//         assert_ok!(DapiStaking::enable_developer_pre_approval(
+//         // disable pre_approval and register provider2
+//         assert_ok!(DapiStaking::enable_operator_pre_approval(
 //             Origin::root(),
 //             false
 //         ));
 //
-//         let developer2 = 2;
-//         let contract2 = MockSmartContract::Evm(H160::repeat_byte(0x02));
-//         assert_register(developer2, &contract2);
+//         let operator2 = 2;
+//         let provider2 = MockProvider(*b"00000000-0000-0000-0000-000000000002");
+//         assert_register_provider(operator2, &provider2);
 //     })
 // }
-//
-// #[test]
-// fn unregister_after_register_is_ok() {
-//     ExternalityBuilder::build().execute_with(|| {
-//         initialize_first_block();
-//
-//         let developer = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//
-//         assert_register(developer, &contract_id);
-//         assert_unregister(developer, &contract_id);
-//         assert!(<TestRuntime as Config>::Currency::reserved_balance(&developer).is_zero());
-//
-//         // Not possible to unregister a contract twice
-//         assert_noop!(
-//             DapiStaking::unregister(Origin::root(), contract_id.clone()),
-//             Error::<TestRuntime>::NotOperatedContract
-//         );
-//     })
-// }
-//
+
+#[test]
+fn unregister_after_register_is_ok() {
+    ExternalityBuilder::build().execute_with(|| {
+        initialize_first_block();
+
+        let operator = 1;
+        let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+
+        let deposit = 200;
+
+        let starting_era = 3;
+        advance_to_era(starting_era);
+
+        assert_register_provider(operator, &provider_id,deposit);
+        assert_unregister(operator, &provider_id);
+
+        let unbonding_era = UnbondingPeriod::get();
+        advance_to_era(starting_era + unbonding_era);
+        //assert_eq!((starting_era + unbonding_era, amount), operator.claim());
+
+        assert!(!ProviderEraStake::<TestRuntime>::contains_key(
+            &provider_id,
+            DapiStaking::current_era()
+        ));
+        // Fixme: add check claim
+        //assert!(<TestRuntime as Config>::Currency::reserved_balance(&operator).is_zero());
+
+        // Not possible to unregister a provider twice
+        assert_noop!(
+            DapiStaking::unregister(provider_id.clone()),
+            Error::<TestRuntime>::NotOperatedProvider
+        );
+    })
+}
+
 // #[test]
 // fn unregister_with_non_root() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
-//
-//         let developer = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//
-//         assert_register(developer, &contract_id);
-//
+// 
+//         let operator = 1;
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+// 
+//         assert_register_provider(operator, &provider_id,200);
+// 
 //         // Not possible to unregister if caller isn't root
 //         assert_noop!(
-//             DapiStaking::unregister(Origin::signed(developer), contract_id.clone()),
+//             DapiStaking::unregister(provider_id.clone()),
 //             BadOrigin
 //         );
 //     })
 // }
-//
-// #[test]
-// fn unregister_stake_and_unstake_is_not_ok() {
-//     ExternalityBuilder::build().execute_with(|| {
-//         initialize_first_block();
-//
-//         let developer = 1;
-//         let staker = 2;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//
-//         // Register contract, stake it, unstake a bit
-//         assert_register(developer, &contract_id);
-//         assert_bond_and_stake(staker, &contract_id, 100);
-//         assert_unbond_and_unstake(staker, &contract_id, 10);
-//
-//         // Unregister contract and verify that stake & unstake no longer work
-//         assert_unregister(developer, &contract_id);
-//
-//         assert_noop!(
-//             DapiStaking::bond_and_stake(Origin::signed(staker), contract_id.clone(), 100),
-//             Error::<TestRuntime>::NotOperatedContract
-//         );
-//         assert_noop!(
-//             DapiStaking::unbond_and_unstake(Origin::signed(staker), contract_id.clone(), 100),
-//             Error::<TestRuntime>::NotOperatedContract
-//         );
-//     })
-// }
-//
+
+#[test]
+fn unregister_stake_and_unstake_is_not_ok() {
+    ExternalityBuilder::build().execute_with(|| {
+        initialize_first_block();
+
+        let operator = 1;
+        let staker = 2;
+        let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+
+        // Register provider, stake it, unstake a bit
+        assert_register_provider(operator, &provider_id,200);
+        assert_stake(staker, &provider_id, 100);
+        assert_unstake(staker, &provider_id, 10);
+
+        // Unregister provider and verify that stake & unstake no longer work
+        assert_unregister(operator, &provider_id);
+
+        assert_noop!(
+            DapiStaking::stake(Origin::signed(staker), provider_id.clone(), 100),
+            Error::<TestRuntime>::NotOperatedProvider
+        );
+        assert_noop!(
+            DapiStaking::unstake(Origin::signed(staker), provider_id.clone(), 100),
+            Error::<TestRuntime>::NotOperatedProvider
+        );
+    })
+}
+
 // #[test]
 // fn withdraw_from_unregistered_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let developer = 1;
-//         let dummy_developer = 2;
+//         let operator = 1;
+//         let dummy_operator = 2;
 //         let staker_1 = 3;
 //         let staker_2 = 4;
 //         let staked_value_1 = 150;
 //         let staked_value_2 = 330;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         let dummy_contract_id = MockSmartContract::Evm(H160::repeat_byte(0x05));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         let dummy_provider_id = MockSmartContract::Evm(H160::repeat_byte(0x05));
 //
-//         // Register both contracts and stake them
-//         assert_register(developer, &contract_id);
-//         assert_register(dummy_developer, &dummy_contract_id);
-//         assert_bond_and_stake(staker_1, &contract_id, staked_value_1);
-//         assert_bond_and_stake(staker_2, &contract_id, staked_value_2);
+//         // Register both providers and stake them
+//         assert_register_provider(operator, &provider_id,200);
+//         assert_register_provider(dummy_operator, &dummy_provider_id);
+//         assert_stake(staker_1, &provider_id, staked_value_1);
+//         assert_stake(staker_2, &provider_id, staked_value_2);
 //
-//         // This contract will just exist so it helps us with testing ledger content
-//         assert_bond_and_stake(staker_1, &dummy_contract_id, staked_value_1);
+//         // This provider will just exist so it helps us with testing ledger content
+//         assert_stake(staker_1, &dummy_provider_id, staked_value_1);
 //
 //         // Advance eras. This will accumulate some rewards.
 //         advance_to_era(5);
 //
-//         assert_unregister(developer, &contract_id);
+//         assert_unregister(operator, &provider_id);
 //
 //         // Claim all past rewards
 //         for era in 1..DapiStaking::current_era() {
-//             assert_claim_staker(staker_1, &contract_id);
-//             assert_claim_staker(staker_2, &contract_id);
-//             assert_claim_dapp(&contract_id, era);
+//             assert_claim_staker(staker_1, &provider_id);
+//             assert_claim_staker(staker_2, &provider_id);
+//             assert_claim_dapp(&provider_id, era);
 //         }
 //
-//         // Unbond everything from the contract.
-//         assert_withdraw_from_unregistered(staker_1, &contract_id);
-//         assert_withdraw_from_unregistered(staker_2, &contract_id);
+//         // Unbond everything from the provider.
+//         assert_withdraw_from_unregistered(staker_1, &provider_id);
+//         assert_withdraw_from_unregistered(staker_2, &provider_id);
 //
 //         // No additional claim ops should be possible
 //         assert_noop!(
-//             DapiStaking::claim_staker(Origin::signed(staker_1), contract_id.clone()),
+//             DapiStaking::claim_staker(Origin::signed(staker_1), provider_id.clone()),
 //             Error::<TestRuntime>::NotStakedContract
 //         );
 //         assert_noop!(
-//             DapiStaking::claim_staker(Origin::signed(staker_2), contract_id.clone()),
+//             DapiStaking::claim_staker(Origin::signed(staker_2), provider_id.clone()),
 //             Error::<TestRuntime>::NotStakedContract
 //         );
 //         assert_noop!(
 //             DapiStaking::claim_dapp(
-//                 Origin::signed(developer),
-//                 contract_id.clone(),
+//                 Origin::signed(operator),
+//                 provider_id.clone(),
 //                 DapiStaking::current_era()
 //             ),
-//             Error::<TestRuntime>::NotOperatedContract
+//             Error::<TestRuntime>::NotOperatedProvider
 //         );
 //     })
 // }
 //
 // #[test]
-// fn withdraw_from_unregistered_when_contract_doesnt_exist() {
+// fn withdraw_from_unregistered_when_provider_doesnt_exist() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //         assert_noop!(
-//             DapiStaking::withdraw_from_unregistered(Origin::signed(1), contract_id),
-//             Error::<TestRuntime>::NotOperatedContract
+//             DapiStaking::withdraw_from_unregistered(Origin::signed(1), provider_id),
+//             Error::<TestRuntime>::NotOperatedProvider
 //         );
 //     })
 // }
 //
 // #[test]
-// fn withdraw_from_unregistered_when_contract_is_still_registered() {
+// fn withdraw_from_unregistered_when_provider_is_still_registered() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let developer = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(developer, &contract_id);
+//         let operator = 1;
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(operator, &provider_id,200);
 //
 //         assert_noop!(
-//             DapiStaking::withdraw_from_unregistered(Origin::signed(1), contract_id),
+//             DapiStaking::withdraw_from_unregistered(Origin::signed(1), provider_id),
 //             Error::<TestRuntime>::NotUnregisteredContract
 //         );
 //     })
@@ -611,26 +636,26 @@ fn new_era_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let developer = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(developer, &contract_id);
+//         let operator = 1;
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(operator, &provider_id,200);
 //
 //         let staker = 2;
 //         let no_staker = 3;
-//         assert_bond_and_stake(staker, &contract_id, 100);
+//         assert_stake(staker, &provider_id, 100);
 //
-//         assert_unregister(developer, &contract_id);
+//         assert_unregister(operator, &provider_id);
 //
 //         // No staked amount so call should fail.
 //         assert_noop!(
-//             DapiStaking::withdraw_from_unregistered(Origin::signed(no_staker), contract_id),
+//             DapiStaking::withdraw_from_unregistered(Origin::signed(no_staker), provider_id),
 //             Error::<TestRuntime>::NotStakedContract
 //         );
 //
 //         // Call should fail if called twice since no staked funds remain.
-//         assert_withdraw_from_unregistered(staker, &contract_id);
+//         assert_withdraw_from_unregistered(staker, &provider_id);
 //         assert_noop!(
-//             DapiStaking::withdraw_from_unregistered(Origin::signed(staker), contract_id),
+//             DapiStaking::withdraw_from_unregistered(Origin::signed(staker), provider_id),
 //             Error::<TestRuntime>::NotStakedContract
 //         );
 //     })
@@ -641,74 +666,74 @@ fn new_era_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let developer = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(developer, &contract_id);
+//         let operator = 1;
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(operator, &provider_id,200);
 //
 //         let staker = 2;
-//         assert_bond_and_stake(staker, &contract_id, 100);
+//         assert_stake(staker, &provider_id, 100);
 //
 //         // Advance eras. This will accumulate some rewards.
 //         advance_to_era(5);
 //
-//         assert_unregister(developer, &contract_id);
+//         assert_unregister(operator, &provider_id);
 //
 //         for _ in 1..DapiStaking::current_era() {
 //             assert_noop!(
-//                 DapiStaking::withdraw_from_unregistered(Origin::signed(staker), contract_id),
+//                 DapiStaking::withdraw_from_unregistered(Origin::signed(staker), provider_id),
 //                 Error::<TestRuntime>::UnclaimedRewardsRemaining
 //             );
-//             assert_claim_staker(staker, &contract_id);
+//             assert_claim_staker(staker, &provider_id);
 //         }
 //
 //         // Withdraw should work after all rewards have been claimed
-//         assert_withdraw_from_unregistered(staker, &contract_id);
+//         assert_withdraw_from_unregistered(staker, &provider_id);
 //     })
 // }
 //
 // #[test]
-// fn bond_and_stake_different_eras_is_ok() {
+// fn stake_different_eras_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
 //         let staker_id = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(20, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(20, &provider_id);
 //
 //         // initially, storage values should be None
 //         let current_era = DapiStaking::current_era();
-//         assert!(DapiStaking::contract_stake_info(&contract_id, current_era).is_none());
+//         assert!(DapiStaking::provider_stake_info(&provider_id, current_era).is_none());
 //
-//         assert_bond_and_stake(staker_id, &contract_id, 100);
+//         assert_stake(staker_id, &provider_id, 100);
 //
 //         advance_to_era(current_era + 2);
 //
-//         // Stake and bond again on the same contract but using a different amount.
-//         assert_bond_and_stake(staker_id, &contract_id, 300);
+//         // Stake and bond again on the same provider but using a different amount.
+//         assert_stake(staker_id, &provider_id, 300);
 //     })
 // }
 //
 // #[test]
-// fn bond_and_stake_two_different_contracts_is_ok() {
+// fn stake_two_different_providers_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
 //         let staker_id = 1;
-//         let first_contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         let second_contract_id = MockSmartContract::Evm(H160::repeat_byte(0x02));
+//         let first_provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         let second_provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000002");
 //
-//         // Insert contracts under registered contracts. Don't use the staker Id.
-//         assert_register(5, &first_contract_id);
-//         assert_register(6, &second_contract_id);
+//         // Insert providers under registered providers. Don't use the staker Id.
+//         assert_register_provider(5, &first_provider_id);
+//         assert_register_provider(6, &second_provider_id);
 //
-//         // Stake on both contracts.
-//         assert_bond_and_stake(staker_id, &first_contract_id, 100);
-//         assert_bond_and_stake(staker_id, &second_contract_id, 300);
+//         // Stake on both providers.
+//         assert_stake(staker_id, &first_provider_id, 100);
+//         assert_stake(staker_id, &second_provider_id, 300);
 //     })
 // }
 //
 // #[test]
-// fn bond_and_stake_two_stakers_one_contract_is_ok() {
+// fn stake_two_stakers_one_provider_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
@@ -716,41 +741,41 @@ fn new_era_is_ok() {
 //         let second_staker_id = 2;
 //         let first_stake_value = 50;
 //         let second_stake_value = 235;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //
-//         // Insert a contract under registered contracts.
-//         assert_register(10, &contract_id);
+//         // Insert a provider under registered providers.
+//         assert_register_provider(10, &provider_id);
 //
-//         // Both stakers stake on the same contract, expect a pass.
-//         assert_bond_and_stake(first_staker_id, &contract_id, first_stake_value);
-//         assert_bond_and_stake(second_staker_id, &contract_id, second_stake_value);
+//         // Both stakers stake on the same provider, expect a pass.
+//         assert_stake(first_staker_id, &provider_id, first_stake_value);
+//         assert_stake(second_staker_id, &provider_id, second_stake_value);
 //     })
 // }
 //
 // #[test]
-// fn bond_and_stake_different_value_is_ok() {
+// fn stake_different_value_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
 //         let staker_id = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //
-//         // Insert a contract under registered contracts.
-//         assert_register(20, &contract_id);
+//         // Insert a provider under registered providers.
+//         assert_register_provider(20, &provider_id);
 //
 //         // Bond&stake almost the entire available balance of the staker.
 //         let staker_free_balance =
 //             Balances::free_balance(&staker_id).saturating_sub(MINIMUM_REMAINING_AMOUNT);
-//         assert_bond_and_stake(staker_id, &contract_id, staker_free_balance - 1);
+//         assert_stake(staker_id, &provider_id, staker_free_balance - 1);
 //
 //         // Bond&stake again with less than existential deposit but this time expect a pass
 //         // since we're only increasing the already staked amount.
-//         assert_bond_and_stake(staker_id, &contract_id, 1);
+//         assert_stake(staker_id, &provider_id, 1);
 //
 //         // Bond&stake more than what's available in funds. Verify that only what's available is bonded&staked.
 //         let staker_id = 2;
 //         let staker_free_balance = Balances::free_balance(&staker_id);
-//         assert_bond_and_stake(staker_id, &contract_id, staker_free_balance + 1);
+//         assert_stake(staker_id, &provider_id, staker_free_balance + 1);
 //
 //         // Verify the minimum transferable amount of stakers account
 //         let transferable_balance =
@@ -761,45 +786,45 @@ fn new_era_is_ok() {
 //         let staker_id = 3;
 //         let staker_free_balance =
 //             Balances::free_balance(&staker_id).saturating_sub(MINIMUM_REMAINING_AMOUNT);
-//         assert_bond_and_stake(staker_id, &contract_id, staker_free_balance - 200);
+//         assert_stake(staker_id, &provider_id, staker_free_balance - 200);
 //
 //         // Try to bond&stake more than we have available (since we already locked most of the free balance).
-//         assert_bond_and_stake(staker_id, &contract_id, 500);
+//         assert_stake(staker_id, &provider_id, 500);
 //     })
 // }
 //
 // #[test]
-// fn bond_and_stake_on_unregistered_contract_fails() {
+// fn stake_on_unregistered_provider_fails() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
 //         let staker_id = 1;
 //         let stake_value = 100;
 //
-//         // Check not registered contract. Expect an error.
-//         let evm_contract = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         // Check not registered provider. Expect an error.
+//         let evm_provider = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //         assert_noop!(
-//             DapiStaking::bond_and_stake(Origin::signed(staker_id), evm_contract, stake_value),
-//             Error::<TestRuntime>::NotOperatedContract
+//             DapiStaking::stake(Origin::signed(staker_id), evm_provider, stake_value),
+//             Error::<TestRuntime>::NotOperatedProvider
 //         );
 //     })
 // }
 //
 // #[test]
-// fn bond_and_stake_insufficient_value() {
+// fn stake_insufficient_value() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //         let staker_id = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //
-//         // Insert a contract under registered contracts.
-//         assert_register(20, &contract_id);
+//         // Insert a provider under registered providers.
+//         assert_register_provider(20, &provider_id);
 //
 //         // If user tries to make an initial bond&stake with less than minimum amount, raise an error.
 //         assert_noop!(
-//             DapiStaking::bond_and_stake(
+//             DapiStaking::stake(
 //                 Origin::signed(staker_id),
-//                 contract_id.clone(),
+//                 provider_id.clone(),
 //                 MINIMUM_STAKING_AMOUNT - 1
 //             ),
 //             Error::<TestRuntime>::InsufficientValue
@@ -807,35 +832,35 @@ fn new_era_is_ok() {
 //
 //         // Now bond&stake the entire stash so we lock all the available funds.
 //         let staker_free_balance = Balances::free_balance(&staker_id);
-//         assert_bond_and_stake(staker_id, &contract_id, staker_free_balance);
+//         assert_stake(staker_id, &provider_id, staker_free_balance);
 //
 //         // Now try to bond&stake some additional funds and expect an error since we cannot bond&stake 0.
 //         assert_noop!(
-//             DapiStaking::bond_and_stake(Origin::signed(staker_id), contract_id.clone(), 1),
+//             DapiStaking::stake(Origin::signed(staker_id), provider_id.clone(), 1),
 //             Error::<TestRuntime>::StakingWithNoValue
 //         );
 //     })
 // }
 //
 // #[test]
-// fn bond_and_stake_too_many_stakers_per_contract() {
+// fn stake_too_many_stakers_per_provider() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         // Insert a contract under registered contracts.
-//         assert_register(10, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         // Insert a provider under registered providers.
+//         assert_register_provider(10, &provider_id);
 //
-//         // Stake with MAX_NUMBER_OF_STAKERS on the same contract. It must work.
+//         // Stake with MAX_NUMBER_OF_STAKERS on the same provider. It must work.
 //         for staker_id in 1..=MAX_NUMBER_OF_STAKERS {
-//             assert_bond_and_stake(staker_id.into(), &contract_id, 100);
+//             assert_stake(staker_id.into(), &provider_id, 100);
 //         }
 //
 //         // Now try to stake with an additional staker and expect an error.
 //         assert_noop!(
-//             DapiStaking::bond_and_stake(
+//             DapiStaking::stake(
 //                 Origin::signed((1 + MAX_NUMBER_OF_STAKERS).into()),
-//                 contract_id.clone(),
+//                 provider_id.clone(),
 //                 100
 //             ),
 //             Error::<TestRuntime>::MaxNumberOfStakersExceeded
@@ -844,169 +869,169 @@ fn new_era_is_ok() {
 // }
 //
 // #[test]
-// fn bond_and_stake_too_many_era_stakes() {
+// fn stake_too_many_era_stakes() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
 //         let staker_id = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         // Insert a contract under registered contracts.
-//         assert_register(10, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         // Insert a provider under registered providers.
+//         assert_register_provider(10, &provider_id);
 //
-//         // Stake with MAX_NUMBER_OF_STAKERS - 1 on the same contract. It must work.
+//         // Stake with MAX_NUMBER_OF_STAKERS - 1 on the same provider. It must work.
 //         let start_era = DapiStaking::current_era();
 //         for offset in 1..MAX_ERA_STAKE_VALUES {
-//             assert_bond_and_stake(staker_id, &contract_id, 100);
+//             assert_stake(staker_id, &provider_id, 100);
 //             advance_to_era(start_era + offset);
 //         }
 //
 //         // Now try to stake with an additional staker and expect an error.
 //         assert_noop!(
-//             DapiStaking::bond_and_stake(Origin::signed(staker_id), contract_id, 100),
+//             DapiStaking::stake(Origin::signed(staker_id), provider_id, 100),
 //             Error::<TestRuntime>::TooManyEraStakeValues
 //         );
 //     })
 // }
 //
 // #[test]
-// fn unbond_and_unstake_multiple_time_is_ok() {
+// fn unstake_multiple_time_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
 //         let staker_id = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //         let original_staked_value = 300 + MINIMUM_STAKING_AMOUNT;
 //         let old_era = DapiStaking::current_era();
 //
-//         // Insert a contract under registered contracts, bond&stake it.
-//         assert_register(10, &contract_id);
-//         assert_bond_and_stake(staker_id, &contract_id, original_staked_value);
+//         // Insert a provider under registered providers, bond&stake it.
+//         assert_register_provider(10, &provider_id);
+//         assert_stake(staker_id, &provider_id, original_staked_value);
 //         advance_to_era(old_era + 1);
 //
-//         // Unstake such an amount so there will remain staked funds on the contract
+//         // Unstake such an amount so there will remain staked funds on the provider
 //         let unstaked_value = 100;
-//         assert_unbond_and_unstake(staker_id, &contract_id, unstaked_value);
+//         assert_unstake(staker_id, &provider_id, unstaked_value);
 //
 //         // Unbond yet again, but don't advance era
-//         // Unstake such an amount so there will remain staked funds on the contract
+//         // Unstake such an amount so there will remain staked funds on the provider
 //         let unstaked_value = 50;
-//         assert_unbond_and_unstake(staker_id, &contract_id, unstaked_value);
+//         assert_unstake(staker_id, &provider_id, unstaked_value);
 //     })
 // }
 //
 // #[test]
-// fn unbond_and_unstake_value_below_staking_threshold() {
+// fn unstake_value_below_staking_threshold() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
 //         let staker_id = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //         let first_value_to_unstake = 300;
 //         let staked_value = first_value_to_unstake + MINIMUM_STAKING_AMOUNT;
 //
-//         // Insert a contract under registered contracts, bond&stake it.
-//         assert_register(10, &contract_id);
-//         assert_bond_and_stake(staker_id, &contract_id, staked_value);
+//         // Insert a provider under registered providers, bond&stake it.
+//         assert_register_provider(10, &provider_id);
+//         assert_stake(staker_id, &provider_id, staked_value);
 //
 //         // Unstake such an amount that exactly minimum staking amount will remain staked.
-//         assert_unbond_and_unstake(staker_id, &contract_id, first_value_to_unstake);
+//         assert_unstake(staker_id, &provider_id, first_value_to_unstake);
 //
 //         // Unstake 1 token and expect that the entire staked amount will be unstaked.
-//         assert_unbond_and_unstake(staker_id, &contract_id, 1);
+//         assert_unstake(staker_id, &provider_id, 1);
 //     })
 // }
 //
 // #[test]
-// fn unbond_and_unstake_in_different_eras() {
+// fn unstake_in_different_eras() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
 //         let (first_staker_id, second_staker_id) = (1, 2);
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //         let staked_value = 500;
 //
-//         // Insert a contract under registered contracts, bond&stake it with two different stakers.
-//         assert_register(10, &contract_id);
-//         assert_bond_and_stake(first_staker_id, &contract_id, staked_value);
-//         assert_bond_and_stake(second_staker_id, &contract_id, staked_value);
+//         // Insert a provider under registered providers, bond&stake it with two different stakers.
+//         assert_register_provider(10, &provider_id);
+//         assert_stake(first_staker_id, &provider_id, staked_value);
+//         assert_stake(second_staker_id, &provider_id, staked_value);
 //
 //         // Advance era, unbond&withdraw with first staker, verify that it was successful
 //         advance_to_era(DapiStaking::current_era() + 10);
 //         let current_era = DapiStaking::current_era();
-//         assert_unbond_and_unstake(first_staker_id, &contract_id, 100);
+//         assert_unstake(first_staker_id, &provider_id, 100);
 //
 //         // Advance era, unbond with second staker and verify storage values are as expected
 //         advance_to_era(current_era + 10);
-//         assert_unbond_and_unstake(second_staker_id, &contract_id, 333);
+//         assert_unstake(second_staker_id, &provider_id, 333);
 //     })
 // }
 //
 // #[test]
-// fn unbond_and_unstake_calls_in_same_era_can_exceed_max_chunks() {
+// fn unstake_calls_in_same_era_can_exceed_max_chunks() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(10, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(10, &provider_id);
 //
 //         let staker = 1;
-//         assert_bond_and_stake(staker, &contract_id, 200 * MAX_UNLOCKING_CHUNKS as Balance);
+//         assert_stake(staker, &provider_id, 200 * MAX_UNLOCKING_CHUNKS as Balance);
 //
 //         // Ensure that we can unbond up to a limited amount of time.
 //         for _ in 0..MAX_UNLOCKING_CHUNKS * 2 {
-//             assert_unbond_and_unstake(1, &contract_id, 10);
+//             assert_unstake(1, &provider_id, 10);
 //             assert_eq!(1, Ledger::<TestRuntime>::get(&staker).unbonding_info.len());
 //         }
 //     })
 // }
 //
 // #[test]
-// fn unbond_and_unstake_with_zero_value_is_not_ok() {
+// fn unstake_with_zero_value_is_not_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(10, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(10, &provider_id);
 //
 //         assert_noop!(
-//             DapiStaking::unbond_and_unstake(Origin::signed(1), contract_id, 0),
+//             DapiStaking::unstake(Origin::signed(1), provider_id, 0),
 //             Error::<TestRuntime>::UnstakingWithNoValue
 //         );
 //     })
 // }
 //
 // #[test]
-// fn unbond_and_unstake_on_not_operated_contract_is_not_ok() {
+// fn unstake_on_not_operated_provider_is_not_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //         assert_noop!(
-//             DapiStaking::unbond_and_unstake(Origin::signed(1), contract_id, 100),
-//             Error::<TestRuntime>::NotOperatedContract
+//             DapiStaking::unstake(Origin::signed(1), provider_id, 100),
+//             Error::<TestRuntime>::NotOperatedProvider
 //         );
 //     })
 // }
 //
 // #[test]
-// fn unbond_and_unstake_too_many_unlocking_chunks_is_not_ok() {
+// fn unstake_too_many_unlocking_chunks_is_not_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(10, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(10, &provider_id);
 //
 //         let staker = 1;
 //         let unstake_amount = 10;
 //         let stake_amount =
 //             MINIMUM_STAKING_AMOUNT * 10 + unstake_amount * MAX_UNLOCKING_CHUNKS as Balance;
 //
-//         assert_bond_and_stake(staker, &contract_id, stake_amount);
+//         assert_stake(staker, &provider_id, stake_amount);
 //
 //         // Ensure that we can unbond up to a limited amount of time.
 //         for _ in 0..MAX_UNLOCKING_CHUNKS {
 //             advance_to_era(DapiStaking::current_era() + 1);
-//             assert_unbond_and_unstake(staker, &contract_id, unstake_amount);
+//             assert_unstake(staker, &provider_id, unstake_amount);
 //         }
 //
 //         // Ensure that we're at the max but can still add new chunks since it should be merged with the existing one
@@ -1014,14 +1039,14 @@ fn new_era_is_ok() {
 //             MAX_UNLOCKING_CHUNKS,
 //             DapiStaking::ledger(&staker).unbonding_info.len()
 //         );
-//         assert_unbond_and_unstake(staker, &contract_id, unstake_amount);
+//         assert_unstake(staker, &provider_id, unstake_amount);
 //
 //         // Ensure that further unbonding attempts result in an error.
 //         advance_to_era(DapiStaking::current_era() + 1);
 //         assert_noop!(
-//             DapiStaking::unbond_and_unstake(
+//             DapiStaking::unstake(
 //                 Origin::signed(staker),
-//                 contract_id.clone(),
+//                 provider_id.clone(),
 //                 unstake_amount
 //             ),
 //             Error::<TestRuntime>::TooManyUnlockingChunks,
@@ -1030,40 +1055,40 @@ fn new_era_is_ok() {
 // }
 //
 // #[test]
-// fn unbond_and_unstake_on_not_staked_contract_is_not_ok() {
+// fn unstake_on_not_staked_provider_is_not_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(10, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(10, &provider_id);
 //
 //         assert_noop!(
-//             DapiStaking::unbond_and_unstake(Origin::signed(1), contract_id, 10),
+//             DapiStaking::unstake(Origin::signed(1), provider_id, 10),
 //             Error::<TestRuntime>::NotStakedContract,
 //         );
 //     })
 // }
 //
 // #[test]
-// fn unbond_and_unstake_too_many_era_stakes() {
+// fn unstake_too_many_era_stakes() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
 //         let staker_id = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(10, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(10, &provider_id);
 //
 //         // Fill up the `EraStakes` vec
 //         let start_era = DapiStaking::current_era();
 //         for offset in 1..MAX_ERA_STAKE_VALUES {
-//             assert_bond_and_stake(staker_id, &contract_id, 100);
+//             assert_stake(staker_id, &provider_id, 100);
 //             advance_to_era(start_era + offset);
 //         }
 //
 //         // At this point, we have max allowed amount of `EraStake` values so we cannot create
 //         // an additional one.
 //         assert_noop!(
-//             DapiStaking::unbond_and_unstake(Origin::signed(staker_id), contract_id, 10),
+//             DapiStaking::unstake(Origin::signed(staker_id), provider_id, 10),
 //             Error::<TestRuntime>::TooManyEraStakeValues
 //         );
 //     })
@@ -1071,7 +1096,7 @@ fn new_era_is_ok() {
 //
 // #[ignore]
 // #[test]
-// fn unbond_and_unstake_with_no_chunks_allowed() {
+// fn unstake_with_no_chunks_allowed() {
 //     // UT can be used to verify situation when MaxUnlockingChunks = 0. Requires mock modification.
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
@@ -1079,14 +1104,14 @@ fn new_era_is_ok() {
 //         // Sanity check
 //         assert_eq!(<TestRuntime as Config>::MaxUnlockingChunks::get(), 0);
 //
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(10, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(10, &provider_id);
 //
 //         let staker_id = 1;
-//         assert_bond_and_stake(staker_id, &contract_id, 100);
+//         assert_stake(staker_id, &provider_id, 100);
 //
 //         assert_noop!(
-//             DapiStaking::unbond_and_unstake(Origin::signed(staker_id), contract_id.clone(), 20),
+//             DapiStaking::unstake(Origin::signed(staker_id), provider_id.clone(), 20),
 //             Error::<TestRuntime>::TooManyUnlockingChunks,
 //         );
 //     })
@@ -1097,22 +1122,22 @@ fn new_era_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(10, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(10, &provider_id);
 //
 //         let staker_id = 1;
-//         assert_bond_and_stake(staker_id, &contract_id, 1000);
+//         assert_stake(staker_id, &provider_id, 1000);
 //
 //         let first_unbond_value = 75;
 //         let second_unbond_value = 39;
 //         let initial_era = DapiStaking::current_era();
 //
 //         // Unbond some amount in the initial era
-//         assert_unbond_and_unstake(staker_id, &contract_id, first_unbond_value);
+//         assert_unstake(staker_id, &provider_id, first_unbond_value);
 //
 //         // Advance one era and then unbond some more
 //         advance_to_era(initial_era + 1);
-//         assert_unbond_and_unstake(staker_id, &contract_id, second_unbond_value);
+//         assert_unstake(staker_id, &provider_id, second_unbond_value);
 //
 //         // Now advance one era before first chunks finishes the unbonding process
 //         advance_to_era(initial_era + UNBONDING_PERIOD - 1);
@@ -1151,16 +1176,16 @@ fn new_era_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(10, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(10, &provider_id);
 //
 //         let staker_id = 1;
-//         assert_bond_and_stake(staker_id, &contract_id, 1000);
+//         assert_stake(staker_id, &provider_id, 1000);
 //
 //         // Repeatedly start unbonding and advance era to create unlocking chunks
 //         let init_unbonding_amount = 15;
 //         for x in 1..=MAX_UNLOCKING_CHUNKS {
-//             assert_unbond_and_unstake(staker_id, &contract_id, init_unbonding_amount * x as u128);
+//             assert_unstake(staker_id, &provider_id, init_unbonding_amount * x as u128);
 //             advance_to_era(DapiStaking::current_era() + 1);
 //         }
 //
@@ -1204,12 +1229,12 @@ fn new_era_is_ok() {
 //         // Sanity check
 //         assert_eq!(<TestRuntime as Config>::UnbondingPeriod::get(), 0);
 //
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(10, &contract_id);
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         assert_register_provider(10, &provider_id);
 //
 //         let staker_id = 1;
-//         assert_bond_and_stake(staker_id, &contract_id, 100);
-//         assert_unbond_and_unstake(staker_id, &contract_id, 20);
+//         assert_stake(staker_id, &provider_id, 100);
+//         assert_unstake(staker_id, &provider_id, 20);
 //
 //         // Try to withdraw but expect an error since current era hasn't passed yet
 //         assert_noop!(
@@ -1224,56 +1249,56 @@ fn new_era_is_ok() {
 // }
 //
 // #[test]
-// fn claim_not_staked_contract() {
+// fn claim_not_staked_provider() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let developer = 1;
+//         let operator = 1;
 //         let staker = 2;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //
-//         assert_register(developer, &contract_id);
+//         assert_register_provider(operator, &provider_id,200);
 //
 //         assert_noop!(
-//             DapiStaking::claim_staker(Origin::signed(staker), contract_id),
+//             DapiStaking::claim_staker(Origin::signed(staker), provider_id),
 //             Error::<TestRuntime>::NotStakedContract
 //         );
 //
 //         advance_to_era(DapiStaking::current_era() + 1);
 //         assert_noop!(
-//             DapiStaking::claim_dapp(Origin::signed(developer), contract_id, 1),
+//             DapiStaking::claim_dapp(Origin::signed(operator), provider_id, 1),
 //             Error::<TestRuntime>::NotStakedContract
 //         );
 //     })
 // }
 //
 // #[test]
-// fn claim_not_operated_contract() {
+// fn claim_not_operated_provider() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let developer = 1;
+//         let operator = 1;
 //         let staker = 2;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //
-//         assert_register(developer, &contract_id);
-//         assert_bond_and_stake(staker, &contract_id, 100);
+//         assert_register_provider(operator, &provider_id,200);
+//         assert_stake(staker, &provider_id, 100);
 //
-//         // Advance one era and unregister the contract
+//         // Advance one era and unregister the provider
 //         advance_to_era(DapiStaking::current_era() + 1);
-//         assert_unregister(developer, &contract_id);
+//         assert_unregister(operator, &provider_id);
 //
-//         // First claim should pass but second should fail because contract was unregistered
-//         assert_claim_staker(staker, &contract_id);
+//         // First claim should pass but second should fail because provider was unregistered
+//         assert_claim_staker(staker, &provider_id);
 //         assert_noop!(
-//             DapiStaking::claim_staker(Origin::signed(staker), contract_id),
-//             Error::<TestRuntime>::NotOperatedContract
+//             DapiStaking::claim_staker(Origin::signed(staker), provider_id),
+//             Error::<TestRuntime>::NotOperatedProvider
 //         );
 //
-//         assert_claim_dapp(&contract_id, 1);
+//         assert_claim_dapp(&provider_id, 1);
 //         assert_noop!(
-//             DapiStaking::claim_dapp(Origin::signed(developer), contract_id, 2),
-//             Error::<TestRuntime>::NotOperatedContract
+//             DapiStaking::claim_dapp(Origin::signed(operator), provider_id, 2),
+//             Error::<TestRuntime>::NotOperatedProvider
 //         );
 //     })
 // }
@@ -1283,28 +1308,28 @@ fn new_era_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let developer = 1;
+//         let operator = 1;
 //         let staker = 2;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //
 //         let start_era = DapiStaking::current_era();
-//         assert_register(developer, &contract_id);
-//         assert_bond_and_stake(staker, &contract_id, 100);
+//         assert_register_provider(operator, &provider_id,200);
+//         assert_stake(staker, &provider_id, 100);
 //         advance_to_era(start_era + 5);
 //
 //         for era in start_era..DapiStaking::current_era() {
-//             assert_claim_staker(staker, &contract_id);
-//             assert_claim_dapp(&contract_id, era);
+//             assert_claim_staker(staker, &provider_id);
+//             assert_claim_dapp(&provider_id, era);
 //         }
 //
 //         assert_noop!(
-//             DapiStaking::claim_staker(Origin::signed(staker), contract_id),
+//             DapiStaking::claim_staker(Origin::signed(staker), provider_id),
 //             Error::<TestRuntime>::EraOutOfBounds
 //         );
 //         assert_noop!(
 //             DapiStaking::claim_dapp(
-//                 Origin::signed(developer),
-//                 contract_id,
+//                 Origin::signed(operator),
+//                 provider_id,
 //                 DapiStaking::current_era()
 //             ),
 //             Error::<TestRuntime>::EraOutOfBounds
@@ -1317,18 +1342,18 @@ fn new_era_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let developer = 1;
+//         let operator = 1;
 //         let staker = 2;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //
 //         let start_era = DapiStaking::current_era();
-//         assert_register(developer, &contract_id);
-//         assert_bond_and_stake(staker, &contract_id, 100);
+//         assert_register_provider(operator, &provider_id,200);
+//         assert_stake(staker, &provider_id, 100);
 //         advance_to_era(start_era + 1);
 //
-//         assert_claim_dapp(&contract_id, start_era);
+//         assert_claim_dapp(&provider_id, start_era);
 //         assert_noop!(
-//             DapiStaking::claim_dapp(Origin::signed(developer), contract_id, start_era),
+//             DapiStaking::claim_dapp(Origin::signed(operator), provider_id, start_era),
 //             Error::<TestRuntime>::AlreadyClaimedInThisEra
 //         );
 //     })
@@ -1339,53 +1364,53 @@ fn new_era_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let first_developer = 1;
-//         let second_developer = 2;
+//         let first_operator = 1;
+//         let second_operator = 2;
 //         let first_staker = 3;
 //         let second_staker = 4;
-//         let first_contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         let second_contract_id = MockSmartContract::Evm(H160::repeat_byte(0x02));
+//         let first_provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
+//         let second_provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000002");
 //
 //         let start_era = DapiStaking::current_era();
 //
 //         // Prepare a scenario with different stakes
 //
-//         assert_register(first_developer, &first_contract_id);
-//         assert_register(second_developer, &second_contract_id);
-//         assert_bond_and_stake(first_staker, &first_contract_id, 100);
-//         assert_bond_and_stake(second_staker, &first_contract_id, 45);
+//         assert_register_provider(first_operator, &first_provider_id);
+//         assert_register_provider(second_operator, &second_provider_id);
+//         assert_stake(first_staker, &first_provider_id, 100);
+//         assert_stake(second_staker, &first_provider_id, 45);
 //
-//         // Just so ratio isn't 100% in favor of the first contract
-//         assert_bond_and_stake(first_staker, &second_contract_id, 33);
-//         assert_bond_and_stake(second_staker, &second_contract_id, 22);
+//         // Just so ratio isn't 100% in favor of the first provider
+//         assert_stake(first_staker, &second_provider_id, 33);
+//         assert_stake(second_staker, &second_provider_id, 22);
 //
 //         let eras_advanced = 3;
 //         advance_to_era(start_era + eras_advanced);
 //
 //         for x in 0..eras_advanced.into() {
-//             assert_bond_and_stake(first_staker, &first_contract_id, 20 + x * 3);
-//             assert_bond_and_stake(second_staker, &first_contract_id, 5 + x * 5);
+//             assert_stake(first_staker, &first_provider_id, 20 + x * 3);
+//             assert_stake(second_staker, &first_provider_id, 5 + x * 5);
 //             advance_to_era(DapiStaking::current_era() + 1);
 //         }
 //
 //         // Ensure that all past eras can be claimed
 //         let current_era = DapiStaking::current_era();
 //         for era in start_era..current_era {
-//             assert_claim_staker(first_staker, &first_contract_id);
-//             assert_claim_dapp(&first_contract_id, era);
-//             assert_claim_staker(second_staker, &first_contract_id);
+//             assert_claim_staker(first_staker, &first_provider_id);
+//             assert_claim_dapp(&first_provider_id, era);
+//             assert_claim_staker(second_staker, &first_provider_id);
 //         }
 //
 //         // Shouldn't be possible to claim current era.
 //         // Also, previous claim calls should have claimed everything prior to current era.
 //         assert_noop!(
-//             DapiStaking::claim_staker(Origin::signed(first_staker), first_contract_id.clone()),
+//             DapiStaking::claim_staker(Origin::signed(first_staker), first_provider_id.clone()),
 //             Error::<TestRuntime>::EraOutOfBounds
 //         );
 //         assert_noop!(
 //             DapiStaking::claim_dapp(
-//                 Origin::signed(first_developer),
-//                 first_contract_id,
+//                 Origin::signed(first_operator),
+//                 first_provider_id,
 //                 current_era
 //             ),
 //             Error::<TestRuntime>::EraOutOfBounds
@@ -1398,18 +1423,18 @@ fn new_era_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let developer = 1;
+//         let operator = 1;
 //         let staker = 2;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //
 //         let start_era = DapiStaking::current_era();
-//         assert_register(developer, &contract_id);
+//         assert_register_provider(operator, &provider_id,200);
 //         let stake_value = 100;
-//         assert_bond_and_stake(staker, &contract_id, stake_value);
+//         assert_stake(staker, &provider_id, stake_value);
 //
 //         // Advance few eras, then unstake everything
 //         advance_to_era(start_era + 5);
-//         assert_unbond_and_unstake(staker, &contract_id, stake_value);
+//         assert_unstake(staker, &provider_id, stake_value);
 //         let full_unstake_era = DapiStaking::current_era();
 //         let number_of_staking_eras = full_unstake_era - start_era;
 //
@@ -1417,33 +1442,33 @@ fn new_era_is_ok() {
 //         advance_to_era(DapiStaking::current_era() + 3);
 //         let stake_value = 75;
 //         let restake_era = DapiStaking::current_era();
-//         assert_bond_and_stake(staker, &contract_id, stake_value);
+//         assert_stake(staker, &provider_id, stake_value);
 //
-//         // Again, few eras pass then contract is unregistered
+//         // Again, few eras pass then provider is unregistered
 //         advance_to_era(DapiStaking::current_era() + 3);
-//         assert_unregister(developer, &contract_id);
+//         assert_unregister(operator, &provider_id);
 //         let unregister_era = DapiStaking::current_era();
 //         let number_of_staking_eras = number_of_staking_eras + unregister_era - restake_era;
 //         advance_to_era(DapiStaking::current_era() + 2);
 //
 //         // Ensure that staker can claim all the eras that he had an active stake
 //         for _ in 0..number_of_staking_eras {
-//             assert_claim_staker(staker, &contract_id);
+//             assert_claim_staker(staker, &provider_id);
 //         }
 //         assert_noop!(
-//             DapiStaking::claim_staker(Origin::signed(staker), contract_id.clone()),
-//             Error::<TestRuntime>::NotOperatedContract
+//             DapiStaking::claim_staker(Origin::signed(staker), provider_id.clone()),
+//             Error::<TestRuntime>::NotOperatedProvider
 //         );
 //
 //         // Ensure the same for dapp reward
 //         for era in start_era..unregister_era {
 //             if era >= full_unstake_era && era < restake_era {
 //                 assert_noop!(
-//                     DapiStaking::claim_dapp(Origin::signed(developer), contract_id.clone(), era),
+//                     DapiStaking::claim_dapp(Origin::signed(operator), provider_id.clone(), era),
 //                     Error::<TestRuntime>::NotStakedContract
 //                 );
 //             } else {
-//                 assert_claim_dapp(&contract_id, era);
+//                 assert_claim_dapp(&provider_id, era);
 //             }
 //         }
 //     })
@@ -1454,63 +1479,63 @@ fn new_era_is_ok() {
 //     ExternalityBuilder::build().execute_with(|| {
 //         initialize_first_block();
 //
-//         let developer = 1;
+//         let operator = 1;
 //         let staker = 2;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //
 //         // Prepare scenario: <staked eras><not staked eras><staked eras><not staked eras>
 //
 //         let start_era = DapiStaking::current_era();
-//         assert_register(developer, &contract_id);
+//         assert_register_provider(operator, &provider_id);
 //         let stake_value = 100;
-//         assert_bond_and_stake(staker, &contract_id, stake_value);
+//         assert_stake(staker, &provider_id, stake_value);
 //
 //         advance_to_era(start_era + 5);
 //         let first_full_unstake_era = DapiStaking::current_era();
-//         assert_unbond_and_unstake(staker, &contract_id, stake_value);
+//         assert_unstake(staker, &provider_id, stake_value);
 //
 //         advance_to_era(DapiStaking::current_era() + 7);
 //         let restake_era = DapiStaking::current_era();
-//         assert_bond_and_stake(staker, &contract_id, stake_value);
+//         assert_stake(staker, &provider_id, stake_value);
 //
 //         advance_to_era(DapiStaking::current_era() + 4);
 //         let second_full_unstake_era = DapiStaking::current_era();
-//         assert_unbond_and_unstake(staker, &contract_id, stake_value);
+//         assert_unstake(staker, &provider_id, stake_value);
 //         advance_to_era(DapiStaking::current_era() + 10);
 //
 //         // Ensure that first interval can be claimed
 //         for era in start_era..first_full_unstake_era {
-//             assert_claim_dapp(&contract_id, era);
+//             assert_claim_dapp(&provider_id, era);
 //         }
 //
 //         // Ensure that the empty interval cannot be claimed
 //         for era in first_full_unstake_era..restake_era {
 //             assert_noop!(
-//                 DapiStaking::claim_dapp(Origin::signed(developer), contract_id.clone(), era),
+//                 DapiStaking::claim_dapp(Origin::signed(operator), provider_id.clone(), era),
 //                 Error::<TestRuntime>::NotStakedContract
 //             );
 //         }
 //
 //         // Ensure that second interval can be claimed
 //         for era in restake_era..second_full_unstake_era {
-//             assert_claim_dapp(&contract_id, era);
+//             assert_claim_dapp(&provider_id, era);
 //         }
 //
-//         // Ensure no more claims are possible since contract was fully unstaked
+//         // Ensure no more claims are possible since provider was fully unstaked
 //         assert_noop!(
 //             DapiStaking::claim_dapp(
-//                 Origin::signed(developer),
-//                 contract_id.clone(),
+//                 Origin::signed(operator),
+//                 provider_id.clone(),
 //                 second_full_unstake_era
 //             ),
 //             Error::<TestRuntime>::NotStakedContract
 //         );
 //
-//         // Now stake again and ensure contract can once again be claimed
+//         // Now stake again and ensure provider can once again be claimed
 //         let last_claim_era = DapiStaking::current_era();
-//         assert_bond_and_stake(staker, &contract_id, stake_value);
+//         assert_stake(staker, &provider_id, stake_value);
 //         advance_to_era(last_claim_era + 1);
-//         assert_claim_dapp(&contract_id, last_claim_era);
+//         assert_claim_dapp(&provider_id, last_claim_era);
 //     })
 // }
 //
@@ -1527,39 +1552,39 @@ fn new_era_is_ok() {
 //         System::assert_last_event(mock::Event::DapiStaking(Event::MaintenanceMode(true)));
 //
 //         let account = 1;
-//         let contract_id = MockSmartContract::Evm(H160::repeat_byte(0x01));
+//         let provider_id = MockProvider(*b"00000000-0000-0000-0000-000000000001");
 //
 //         //
 //         // 1
 //         assert_noop!(
-//             DapiStaking::register(Origin::signed(account), contract_id),
+//             DapiStaking::register(Origin::signed(account), provider_id),
 //             Error::<TestRuntime>::Disabled
 //         );
 //         assert_noop!(
-//             DapiStaking::unregister(Origin::signed(account), contract_id),
+//             DapiStaking::unregister(Origin::signed(account), provider_id),
 //             Error::<TestRuntime>::Disabled
 //         );
 //         assert_noop!(
-//             DapiStaking::withdraw_from_unregistered(Origin::signed(account), contract_id),
+//             DapiStaking::withdraw_from_unregistered(Origin::signed(account), provider_id),
 //             Error::<TestRuntime>::Disabled
 //         );
 //
 //         //
 //         // 2
 //         assert_noop!(
-//             DapiStaking::bond_and_stake(Origin::signed(account), contract_id, 100),
+//             DapiStaking::stake(Origin::signed(account), provider_id, 100),
 //             Error::<TestRuntime>::Disabled
 //         );
 //         assert_noop!(
-//             DapiStaking::unbond_and_unstake(Origin::signed(account), contract_id, 100),
+//             DapiStaking::unstake(Origin::signed(account), provider_id, 100),
 //             Error::<TestRuntime>::Disabled
 //         );
 //         assert_noop!(
-//             DapiStaking::claim_dapp(Origin::signed(account), contract_id, 5),
+//             DapiStaking::claim_dapp(Origin::signed(account), provider_id, 5),
 //             Error::<TestRuntime>::Disabled
 //         );
 //         assert_noop!(
-//             DapiStaking::claim_staker(Origin::signed(account), contract_id),
+//             DapiStaking::claim_staker(Origin::signed(account), provider_id),
 //             Error::<TestRuntime>::Disabled
 //         );
 //         assert_noop!(
@@ -1574,11 +1599,11 @@ fn new_era_is_ok() {
 //             Error::<TestRuntime>::Disabled
 //         );
 //         assert_noop!(
-//             DapiStaking::developer_pre_approval(Origin::root(), account),
+//             DapiStaking::operator_pre_approval(Origin::root(), account),
 //             Error::<TestRuntime>::Disabled
 //         );
 //         assert_noop!(
-//             DapiStaking::enable_developer_pre_approval(Origin::root(), true),
+//             DapiStaking::enable_operator_pre_approval(Origin::root(), true),
 //             Error::<TestRuntime>::Disabled
 //         );
 //         // shouldn't do anything since we're in maintenance mode
@@ -1588,7 +1613,7 @@ fn new_era_is_ok() {
 //         // 4
 //         assert_ok!(DapiStaking::maintenance_mode(Origin::root(), false));
 //         System::assert_last_event(mock::Event::DapiStaking(Event::MaintenanceMode(false)));
-//         assert_register(account, &contract_id);
+//         assert_register_provider(account, &provider_id);
 //     })
 // }
 //
@@ -1617,14 +1642,14 @@ fn new_era_is_ok() {
 // fn dev_stakers_split_util() {
 //     let base_stakers_reward = 7 * 11 * 13 * 17;
 //     let base_dapps_reward = 19 * 23 * 31;
-//     let staked_on_contract = 123456;
-//     let total_staked = staked_on_contract * 3;
+//     let staked_on_provider = 123456;
+//     let total_staked = staked_on_provider * 3;
 //
 //     // Prepare structs
 //     let staking_points = ContractStakeInfo::<Balance> {
-//         total: staked_on_contract,
+//         total: staked_on_provider,
 //         number_of_stakers: 10,
-//         contract_reward_claimed: false,
+//         provider_reward_claimed: false,
 //     };
 //     let era_info = EraInfo::<Balance> {
 //         rewards: RewardInfo {
@@ -1637,9 +1662,9 @@ fn new_era_is_ok() {
 //
 //     let (dev_reward, stakers_reward) = DapiStaking::dev_stakers_split(&staking_points, &era_info);
 //
-//     let contract_stake_ratio = Perbill::from_rational(staked_on_contract, total_staked);
-//     let calculated_stakers_reward = contract_stake_ratio * base_stakers_reward;
-//     let calculated_dev_reward = contract_stake_ratio * base_dapps_reward;
+//     let provider_stake_ratio = Perbill::from_rational(staked_on_provider, total_staked);
+//     let calculated_stakers_reward = provider_stake_ratio * base_stakers_reward;
+//     let calculated_dev_reward = provider_stake_ratio * base_dapps_reward;
 //     assert_eq!(calculated_dev_reward, dev_reward);
 //     assert_eq!(calculated_stakers_reward, stakers_reward);
 //
