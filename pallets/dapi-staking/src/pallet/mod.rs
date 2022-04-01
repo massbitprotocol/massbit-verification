@@ -58,7 +58,8 @@ pub mod pallet {
 		type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>
 			+ ReservableCurrency<Self::AccountId>;
 
-		type Provider: Default + Parameter + Member;
+		/// Provider id.
+		type Provider: Parameter + Member + Default;
 
 		/// Number of blocks per era.
 		#[pallet::constant]

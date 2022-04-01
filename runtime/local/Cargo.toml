@@ -88,6 +88,7 @@ runtime-benchmarks = [
 	"frame-system/runtime-benchmarks",
 	"hex-literal",
 	"sp-runtime/runtime-benchmarks",
+	"pallet-dapi/runtime-benchmarks",
 	"pallet-dapi-staking/runtime-benchmarks",
 	"pallet-balances/runtime-benchmarks",
 	"pallet-timestamp/runtime-benchmarks",
