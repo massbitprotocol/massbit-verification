@@ -51,7 +51,8 @@ fn register_provider<T: Config>() -> Result<(T::AccountId, T::Provider), &'stati
 	let operator: T::AccountId = account("operator", 10000, SEED);
 	T::Currency::make_free_balance_be(&operator, BalanceOf::<T>::max_value());
 	let provider_id = T::Provider::default();
-	DapiStaking::<T>::register(operator.clone(), provider_id.clone())?;
+	let deposit = T::RegisterDeposit::get() + T::MinimumStakingAmount::get();
+	DapiStaking::<T>::register(operator.clone(), provider_id.clone(), deposit)?;
 	Ok((operator, provider_id))
 }
 
@@ -121,7 +122,7 @@ benchmarks! {
 		initialize::<T>();
 
 		let (_, provider_id) = register_provider::<T>()?;
-		prepare_stake::<T>(T::MaxNumberOfStakersPerProvider::get() - 1, &provider_id, SEED)?;
+		prepare_stake::<T>(T::MaxNumberOfStakersPerProvider::get() - 2, &provider_id, SEED)?;
 
 		let staker = whitelisted_caller();
 		let _ = T::Currency::make_free_balance_be(&staker, BalanceOf::<T>::max_value());
@@ -136,7 +137,7 @@ benchmarks! {
 		initialize::<T>();
 
 		let (_, provider_id) = register_provider::<T>()?;
-		prepare_stake::<T>(T::MaxNumberOfStakersPerProvider::get() - 1, &provider_id, SEED)?;
+		prepare_stake::<T>(T::MaxNumberOfStakersPerProvider::get() - 2, &provider_id, SEED)?;
 
 		let staker = whitelisted_caller();
 		let _ = T::Currency::make_free_balance_be(&staker, BalanceOf::<T>::max_value());
@@ -153,7 +154,7 @@ benchmarks! {
 		initialize::<T>();
 
 		let (_, provider_id) = register_provider::<T>()?;
-		prepare_stake::<T>(T::MaxNumberOfStakersPerProvider::get() - 1, &provider_id, SEED)?;
+		prepare_stake::<T>(T::MaxNumberOfStakersPerProvider::get() - 2, &provider_id, SEED)?;
 
 		let staker = whitelisted_caller();
 		let _ = T::Currency::make_free_balance_be(&staker, BalanceOf::<T>::max_value());

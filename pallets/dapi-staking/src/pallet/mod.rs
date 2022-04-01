@@ -22,6 +22,7 @@ const STAKING_ID: LockIdentifier = *b"apistake";
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
+	use frame_support::dispatch::RawOrigin;
 
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -248,8 +249,8 @@ pub mod pallet {
 			let previous_era = Self::current_era();
 
 			// Value is compared to 1 since genesis block is ignored
-			if now % blocks_per_era == BlockNumberFor::<T>::from(1u32)
-				|| force_new_era || previous_era.is_zero()
+			if now % blocks_per_era == BlockNumberFor::<T>::from(1u32) ||
+				force_new_era || previous_era.is_zero()
 			{
 				let next_era = previous_era + 1;
 				CurrentEra::<T>::put(next_era);
@@ -288,7 +289,7 @@ pub mod pallet {
 				if let ProviderState::Unregistered(e1, e2) = provider_info.state {
 					(e1, e2)
 				} else {
-					return Err(Error::<T>::NotUnregisteredProvider.into());
+					return Err(Error::<T>::NotUnregisteredProvider.into())
 				};
 
 			let current_era = Self::current_era();
@@ -344,7 +345,7 @@ pub mod pallet {
 			let unbonding_era = if let ProviderState::Unregistered(_, e) = provider_info.state {
 				e
 			} else {
-				return Err(Error::<T>::NotUnregisteredProvider.into());
+				return Err(Error::<T>::NotUnregisteredProvider.into())
 			};
 
 			let current_era = Self::current_era();
@@ -393,8 +394,8 @@ pub mod pallet {
 			let mut staker_info = Self::staker_info(&staker, &provider_id);
 
 			ensure!(
-				!staker_info.latest_staked_value().is_zero()
-					|| staking_info.number_of_stakers < T::MaxNumberOfStakersPerProvider::get(),
+				!staker_info.latest_staked_value().is_zero() ||
+					staking_info.number_of_stakers < T::MaxNumberOfStakersPerProvider::get(),
 				Error::<T>::MaxNumberOfStakersExceeded
 			);
 			if staker_info.latest_staked_value().is_zero() {
@@ -670,23 +671,49 @@ pub mod pallet {
 		}
 	}
 
-	pub trait Staking<AccountId, Provider> {
-		fn register(origin: AccountId, provider_id: Provider) -> DispatchResultWithPostInfo;
+	pub trait Staking<AccountId, Provider, Balance> {
+		fn register(
+			origin: AccountId,
+			provider_id: Provider,
+			deposit: Balance,
+		) -> DispatchResultWithPostInfo;
 		fn unregister(provider_id: Provider) -> DispatchResultWithPostInfo;
 	}
 
-	impl<T: Config> Staking<T::AccountId, T::Provider> for Pallet<T> {
+	impl<T: Config>
+		Staking<
+			T::AccountId,
+			T::Provider,
+			<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
+		> for Pallet<T>
+	{
 		fn register(
 			operator: T::AccountId,
 			provider_id: T::Provider,
+			deposit: <<T as Config>::Currency as Currency<
+				<T as frame_system::Config>::AccountId,
+			>>::Balance,
 		) -> DispatchResultWithPostInfo {
 			ensure!(
 				!RegisteredProviders::<T>::contains_key(&provider_id),
 				Error::<T>::AlreadyRegisteredProvider
 			);
+
+			ensure!(
+				deposit >= T::RegisterDeposit::get() + T::MinimumStakingAmount::get(),
+				Error::<T>::InsufficientValue
+			);
+
 			T::Currency::reserve(&operator, T::RegisterDeposit::get())?;
 
 			RegisteredProviders::<T>::insert(&provider_id, ProviderInfo::new(operator.clone()));
+
+			let stake_amount = deposit.saturating_sub(T::RegisterDeposit::get());
+			Self::stake(
+				RawOrigin::Signed(operator.clone()).into(),
+				provider_id.clone(),
+				stake_amount,
+			)?;
 
 			Ok(().into())
 		}
@@ -777,7 +804,7 @@ pub mod pallet {
 				// Ignore provider if it was unregistered
 				consumed_weight = consumed_weight.saturating_add(T::DbWeight::get().reads(1));
 				if let ProviderState::Unregistered(_, _) = provider_info.state {
-					continue;
+					continue
 				}
 
 				// Copy data from era `X` to era `X + 1`

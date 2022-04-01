@@ -26,7 +26,7 @@ type Block = frame_system::mocking::MockBlock<TestRuntime>;
 /// Value shouldn't be less than 2 for testing purposes, otherwise we cannot test certain corner
 /// cases.
 pub(crate) const EXISTENTIAL_DEPOSIT: Balance = 2;
-pub(crate) const MAX_NUMBER_OF_STAKERS: u32 = 4;
+pub(crate) const MAX_NUMBER_OF_STAKERS: u32 = 5;
 /// Value shouldn't be less than 2 for testing purposes, otherwise we cannot test certain corner
 /// cases.
 pub(crate) const MINIMUM_STAKING_AMOUNT: Balance = 10;
@@ -151,11 +151,11 @@ impl pallet_dapi_staking::Config for TestRuntime {
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Encode, Decode, Debug, scale_info::TypeInfo)]
-pub struct MockProvider(&'static [u8]);
+pub struct MockProvider(pub [u8; 36]);
 
 impl Default for MockProvider {
 	fn default() -> Self {
-		MockProvider("82615baf-4024-4ac3-9e44-a9a3c528f7e5".as_bytes())
+		MockProvider(*b"82615baf-4024-4ac3-9e44-a9a3c528f7e5")
 	}
 }
 
