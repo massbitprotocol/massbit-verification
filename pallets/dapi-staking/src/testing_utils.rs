@@ -57,40 +57,72 @@ pub(crate) fn get_total_reward_per_era() -> Balance {
     BLOCK_REWARD * BLOCKS_PER_ERA as Balance
 }
 
-/// Used to register contract for staking and assert success.
-pub(crate) fn assert_register(developer: AccountId, contract_id: &MockProvider) {
-    let init_reserved_balance = <TestRuntime as Config>::Currency::reserved_balance(&developer);
+/// Used to register Provider for staking and assert success.
+pub(crate) fn assert_register_node_gateway(provider_acc: AccountId, provider: &MockProvider) {
+    let init_reserved_balance = <TestRuntime as Config>::Currency::reserved_balance(&provider_acc);
 
     // Contract shouldn't exist.
-    // assert!(!RegisteredDapps::<TestRuntime>::contains_key(contract_id));
-    // assert!(!RegisteredProviders::<TestRuntime>::contains_key(
-    //     developer.into()
-    // ));
+    assert!(!RegisteredProviders::<TestRuntime>::contains_key(
+        provider
+    ));
 
-    // Verify op is successfull
-    // assert_ok!(DapiStaking::enable_developer_pre_approval(
-    //     Origin::root(),
-    //     false
-    // ));
-    // assert_ok!(DapiStaking::register(
-    //     Origin::signed(developer),
-    //     contract_id.clone()
-    // ));
 
-    // let dapp_info = RegisteredDapps::<TestRuntime>::get(contract_id).unwrap();
-    // assert_eq!(dapp_info.state, DAppState::Registered);
-    // assert_eq!(dapp_info.developer, developer);
-    // assert_eq!(
-    //     *contract_id,
-    //     RegisteredProviders::<TestRuntime>::get(developer).unwrap()
-    // );
+    assert_ok!(DapiStaking::register(
+        provider_acc,
+        provider.clone()
+    ));
 
-    let final_reserved_balance = <TestRuntime as Config>::Currency::reserved_balance(&developer);
+    let provider_info = RegisteredProviders::<TestRuntime>::get(provider).unwrap();
+    assert_eq!(provider_info.state, ProviderState::Registered);
+    assert_eq!(provider_info.operator, provider_acc);
+    assert_eq!(
+        provider_info,
+        RegisteredProviders::<TestRuntime>::get(&provider).unwrap()
+    );
+
+    let final_reserved_balance = <TestRuntime as Config>::Currency::reserved_balance(&provider_acc);
     assert_eq!(
         final_reserved_balance,
         init_reserved_balance + <TestRuntime as Config>::RegisterDeposit::get()
     );
 }
+
+
+
+// /// Used to register contract for staking and assert success.
+// pub(crate) fn assert_register(developer: AccountId, contract_id: &MockProvider) {
+//     let init_reserved_balance = <TestRuntime as Config>::Currency::reserved_balance(&developer);
+//
+//     // Contract shouldn't exist.
+//     // assert!(!RegisteredDapps::<TestRuntime>::contains_key(contract_id));
+//     // assert!(!RegisteredProviders::<TestRuntime>::contains_key(
+//     //     developer.into()
+//     // ));
+//
+//     // Verify op is successfull
+//     // assert_ok!(DapiStaking::enable_developer_pre_approval(
+//     //     Origin::root(),
+//     //     false
+//     // ));
+//     // assert_ok!(DapiStaking::register(
+//     //     Origin::signed(developer),
+//     //     contract_id.clone()
+//     // ));
+//
+//     // let dapp_info = RegisteredDapps::<TestRuntime>::get(contract_id).unwrap();
+//     // assert_eq!(dapp_info.state, DAppState::Registered);
+//     // assert_eq!(dapp_info.developer, developer);
+//     // assert_eq!(
+//     //     *contract_id,
+//     //     RegisteredProviders::<TestRuntime>::get(developer).unwrap()
+//     // );
+//
+//     let final_reserved_balance = <TestRuntime as Config>::Currency::reserved_balance(&developer);
+//     assert_eq!(
+//         final_reserved_balance,
+//         init_reserved_balance + <TestRuntime as Config>::RegisterDeposit::get()
+//     );
+// }
 
 /// Perform `unregister` with all the accompanied checks including before/after storage comparison.
 pub(crate) fn assert_unregister(developer: AccountId, contract_id: &MockProvider) {
@@ -190,6 +222,70 @@ pub(crate) fn assert_withdraw_from_unregistered(
         &staker,
         contract_id
     ));
+}
+
+// Perform `bond_and_stake` with all the accompanied checks including before/after storage comparison.
+pub(crate) fn assert_bond_and_stake(
+    staker: AccountId,
+    contract_id: &MockProvider,
+    value: Balance,
+) {
+    let current_era = DapiStaking::current_era();
+    let init_state = MemorySnapshot::all(current_era, &contract_id, staker);
+
+    // Calculate the expected value that will be staked.
+    let available_for_staking = init_state.free_balance
+        - init_state.ledger.locked
+        - <TestRuntime as Config>::MinimumRemainingAmount::get();
+    let staking_value = available_for_staking.min(value);
+
+    // Perform op and verify everything is as expected
+    assert_ok!(DapiStaking::stake(
+        Origin::signed(staker),
+        contract_id.clone(),
+        value,
+    ));
+    System::assert_last_event(mock::Event::DapiStaking(Event::BondAndStake(
+        staker,
+        contract_id.clone(),
+        staking_value,
+    )));
+
+    let final_state = MemorySnapshot::all(current_era, &contract_id, staker);
+
+    // In case staker hasn't been staking this contract until now
+    if init_state.staker_info.latest_staked_value() == 0 {
+        assert!(GeneralStakerInfo::<TestRuntime>::contains_key(
+            &staker,
+            contract_id
+        ));
+        assert_eq!(
+            final_state.contract_info.number_of_stakers,
+            init_state.contract_info.number_of_stakers + 1
+        );
+    }
+
+    // Verify the remaining states
+    assert_eq!(
+        final_state.era_info.staked,
+        init_state.era_info.staked + staking_value
+    );
+    assert_eq!(
+        final_state.era_info.locked,
+        init_state.era_info.locked + staking_value
+    );
+    assert_eq!(
+        final_state.contract_info.total,
+        init_state.contract_info.total + staking_value
+    );
+    assert_eq!(
+        final_state.staker_info.latest_staked_value(),
+        init_state.staker_info.latest_staked_value() + staking_value
+    );
+    assert_eq!(
+        final_state.ledger.locked,
+        init_state.ledger.locked + staking_value
+    );
 }
 
 // Perform `bond_and_stake` with all the accompanied checks including before/after storage comparison.

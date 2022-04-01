@@ -28,91 +28,91 @@ fn on_initialize_when_dapp_staking_enabled_in_mid_of_an_era_is_ok() {
     })
 }
 
-// #[test]
-// fn on_unbalanced_is_ok() {
-//     ExternalityBuilder::build().execute_with(|| {
-//         // At the beginning, both should be 0
-//         assert_eq!(
-//             BlockRewardAccumulator::<TestRuntime>::get(),
-//             Default::default()
-//         );
-//         assert!(free_balance_of_dapps_staking_account().is_zero());
-//
-//         // After handling imbalance, accumulator and account should be updated
-//         DapiStaking::on_unbalanced(Balances::issue(BLOCK_REWARD));
-//         let block_reward = BlockRewardAccumulator::<TestRuntime>::get();
-//         assert_eq!(BLOCK_REWARD, block_reward.stakers + block_reward.operators);
-//
-//         let expected_operators_reward =
-//             <TestRuntime as Config>::OperatorRewardPercentage::get() * BLOCK_REWARD;
-//         let expected_stakers_reward = BLOCK_REWARD - expected_operators_reward;
-//         assert_eq!(block_reward.stakers, expected_stakers_reward);
-//         assert_eq!(block_reward.operators, expected_operators_reward);
-//
-//         assert_eq!(BLOCK_REWARD, free_balance_of_dapps_staking_account());
-//
-//         // After triggering a new era, accumulator should be set to 0 but account shouldn't consume any new imbalance
-//         DapiStaking::on_initialize(System::block_number());
-//         assert_eq!(
-//             BlockRewardAccumulator::<TestRuntime>::get(),
-//             Default::default()
-//         );
-//         assert_eq!(BLOCK_REWARD, free_balance_of_dapps_staking_account());
-//     })
-// }
-//
-// #[test]
-// fn on_initialize_is_ok() {
-//     ExternalityBuilder::build().execute_with(|| {
-//         // Before we start, era is zero
-//         assert!(DapiStaking::current_era().is_zero());
-//
-//         // We initialize the first block and advance to second one. New era must be triggered.
-//         initialize_first_block();
-//         let current_era = DapiStaking::current_era();
-//         assert_eq!(1, current_era);
-//
-//         let previous_era = current_era;
-//         advance_to_era(previous_era + 10);
-//
-//         // Check that all reward&stakes are as expected
-//         let current_era = DapiStaking::current_era();
-//         for era in 1..current_era {
-//             let reward_info = GeneralEraInfo::<TestRuntime>::get(era).unwrap().rewards;
-//             assert_eq!(
-//                 get_total_reward_per_era(),
-//                 reward_info.stakers + reward_info.operators
-//             );
-//         }
-//         // Current era rewards should be 0
-//         let era_rewards = GeneralEraInfo::<TestRuntime>::get(current_era).unwrap();
-//         assert_eq!(0, era_rewards.staked);
-//         assert_eq!(era_rewards.rewards, Default::default());
-//     })
-// }
-//
-// #[test]
-// fn new_era_length_is_always_blocks_per_era() {
-//     ExternalityBuilder::build().execute_with(|| {
-//         initialize_first_block();
-//         let blocks_per_era = mock::BLOCKS_PER_ERA;
-//
-//         // go to beginning of an era
-//         advance_to_era(mock::DapiStaking::current_era() + 1);
-//
-//         // record era number and block number
-//         let start_era = mock::DapiStaking::current_era();
-//         let starting_block_number = System::block_number();
-//
-//         // go to next era
-//         advance_to_era(mock::DapiStaking::current_era() + 1);
-//         let ending_block_number = System::block_number();
-//
-//         // make sure block number difference is is blocks_per_era
-//         assert_eq!(mock::DapiStaking::current_era(), start_era + 1);
-//         assert_eq!(ending_block_number - starting_block_number, blocks_per_era);
-//     })
-// }
+#[test]
+fn on_unbalanced_is_ok() {
+    ExternalityBuilder::build().execute_with(|| {
+        // At the beginning, both should be 0
+        assert_eq!(
+            BlockRewardAccumulator::<TestRuntime>::get(),
+            Default::default()
+        );
+        assert!(free_balance_of_dapps_staking_account().is_zero());
+
+        // After handling imbalance, accumulator and account should be updated
+        DapiStaking::on_unbalanced(Balances::issue(BLOCK_REWARD));
+        let block_reward = BlockRewardAccumulator::<TestRuntime>::get();
+        assert_eq!(BLOCK_REWARD, block_reward.stakers + block_reward.operators);
+
+        let expected_operators_reward =
+            <TestRuntime as Config>::OperatorRewardPercentage::get() * BLOCK_REWARD;
+        let expected_stakers_reward = BLOCK_REWARD - expected_operators_reward;
+        assert_eq!(block_reward.stakers, expected_stakers_reward);
+        assert_eq!(block_reward.operators, expected_operators_reward);
+
+        assert_eq!(BLOCK_REWARD, free_balance_of_dapps_staking_account());
+
+        // After triggering a new era, accumulator should be set to 0 but account shouldn't consume any new imbalance
+        DapiStaking::on_initialize(System::block_number());
+        assert_eq!(
+            BlockRewardAccumulator::<TestRuntime>::get(),
+            Default::default()
+        );
+        assert_eq!(BLOCK_REWARD, free_balance_of_dapps_staking_account());
+    })
+}
+
+#[test]
+fn on_initialize_is_ok() {
+    ExternalityBuilder::build().execute_with(|| {
+        // Before we start, era is zero
+        assert!(DapiStaking::current_era().is_zero());
+
+        // We initialize the first block and advance to second one. New era must be triggered.
+        initialize_first_block();
+        let current_era = DapiStaking::current_era();
+        assert_eq!(1, current_era);
+
+        let previous_era = current_era;
+        advance_to_era(previous_era + 10);
+
+        // Check that all reward&stakes are as expected
+        let current_era = DapiStaking::current_era();
+        for era in 1..current_era {
+            let reward_info = GeneralEraInfo::<TestRuntime>::get(era).unwrap().rewards;
+            assert_eq!(
+                get_total_reward_per_era(),
+                reward_info.stakers + reward_info.operators
+            );
+        }
+        // Current era rewards should be 0
+        let era_rewards = GeneralEraInfo::<TestRuntime>::get(current_era).unwrap();
+        assert_eq!(0, era_rewards.staked);
+        assert_eq!(era_rewards.rewards, Default::default());
+    })
+}
+
+#[test]
+fn new_era_length_is_always_blocks_per_era() {
+    ExternalityBuilder::build().execute_with(|| {
+        initialize_first_block();
+        let blocks_per_era = mock::BLOCKS_PER_ERA;
+
+        // go to beginning of an era
+        advance_to_era(mock::DapiStaking::current_era() + 1);
+
+        // record era number and block number
+        let start_era = mock::DapiStaking::current_era();
+        let starting_block_number = System::block_number();
+
+        // go to next era
+        advance_to_era(mock::DapiStaking::current_era() + 1);
+        let ending_block_number = System::block_number();
+
+        // make sure block number difference is is blocks_per_era
+        assert_eq!(mock::DapiStaking::current_era(), start_era + 1);
+        assert_eq!(ending_block_number - starting_block_number, blocks_per_era);
+    })
+}
 
 // #[test]
 // fn new_era_is_handled_with_maintenance_mode() {
@@ -177,65 +177,66 @@ fn on_initialize_when_dapp_staking_enabled_in_mid_of_an_era_is_ok() {
 //         assert_eq!(end_block_number - start_block_number, blocks_per_era);
 //     })
 // }
-//
-// #[test]
-// fn new_era_is_ok() {
-//     ExternalityBuilder::build().execute_with(|| {
-//         // set initial era index
-//         advance_to_era(DapiStaking::current_era() + 10);
-//         let starting_era = DapiStaking::current_era();
-//
-//         // verify that block reward is zero at the beginning of an era
-//         assert_eq!(DapiStaking::block_reward_accumulator(), Default::default());
-//
-//         // Increment block by setting it to the first block in era value
-//         run_for_blocks(1);
-//         let current_era = DapiStaking::current_era();
-//         assert_eq!(starting_era, current_era);
-//
-//         // verify that block reward is added to the block_reward_accumulator
-//         let block_reward = DapiStaking::block_reward_accumulator();
-//         assert_eq!(BLOCK_REWARD, block_reward.stakers + block_reward.dapi);
-//
-//         // register and bond to verify storage item
-//         let staker = 2;
-//         let developer = 3;
-//         let staked_amount = 100;
-//         let contract = MockSmartContract::Evm(H160::repeat_byte(0x01));
-//         assert_register(developer, &contract);
-//         assert_bond_and_stake(staker, &contract, staked_amount);
-//
-//         // CurrentEra should be incremented
-//         // block_reward_accumulator should be reset to 0
-//         advance_to_era(DapiStaking::current_era() + 1);
-//
-//         let current_era = DapiStaking::current_era();
-//         assert_eq!(starting_era + 1, current_era);
-//         System::assert_last_event(mock::Event::DapiStaking(Event::NewDappStakingEra(
-//             starting_era + 1,
-//         )));
-//
-//         // verify that block reward accumulator is reset to 0
-//         let block_reward = DapiStaking::block_reward_accumulator();
-//         assert_eq!(block_reward, Default::default());
-//
-//         let expected_era_reward = get_total_reward_per_era();
-//         let expected_operators_reward =
-//             <TestRuntime as Config>::OperatorRewardPercentage::get() * expected_era_reward;
-//         let expected_stakers_reward = expected_era_reward - expected_operators_reward;
-//
-//         // verify that .staked is copied and .reward is added
-//         let era_rewards = GeneralEraInfo::<TestRuntime>::get(starting_era).unwrap();
-//         assert_eq!(staked_amount, era_rewards.staked);
-//         assert_eq!(
-//             expected_era_reward,
-//             era_rewards.rewards.dapi + era_rewards.rewards.stakers
-//         );
-//         assert_eq!(expected_operators_reward, era_rewards.rewards.dapi);
-//         assert_eq!(expected_stakers_reward, era_rewards.rewards.stakers);
-//     })
-// }
-//
+
+#[test]
+fn new_era_is_ok() {
+    ExternalityBuilder::build().execute_with(|| {
+        // set initial era index
+        advance_to_era(DapiStaking::current_era() + 10);
+        let starting_era = DapiStaking::current_era();
+
+        // verify that block reward is zero at the beginning of an era
+        assert_eq!(DapiStaking::block_reward_accumulator(), Default::default());
+
+        // Increment block by setting it to the first block in era value
+        run_for_blocks(1);
+        let current_era = DapiStaking::current_era();
+        assert_eq!(starting_era, current_era);
+
+        // verify that block reward is added to the block_reward_accumulator
+        let block_reward = DapiStaking::block_reward_accumulator();
+        assert_eq!(BLOCK_REWARD, block_reward.stakers + block_reward.dapi);
+
+        // register and bond to verify storage item
+        let staker = 2;
+        let provider_acc = 3;
+        let staked_amount = 100;
+        //let contract = MockSmartContract::Evm(H160::repeat_byte(0x01));
+        let provider = MockProvider(1);
+        assert_register_node_gateway(provider_acc, &provider);
+        assert_bond_and_stake(staker, &provider, staked_amount);
+
+        // CurrentEra should be incremented
+        // block_reward_accumulator should be reset to 0
+        advance_to_era(DapiStaking::current_era() + 1);
+
+        let current_era = DapiStaking::current_era();
+        assert_eq!(starting_era + 1, current_era);
+        System::assert_last_event(mock::Event::DapiStaking(Event::NewDappStakingEra(
+            starting_era + 1,
+        )));
+
+        // verify that block reward accumulator is reset to 0
+        let block_reward = DapiStaking::block_reward_accumulator();
+        assert_eq!(block_reward, Default::default());
+
+        let expected_era_reward = get_total_reward_per_era();
+        let expected_operators_reward =
+            <TestRuntime as Config>::OperatorRewardPercentage::get() * expected_era_reward;
+        let expected_stakers_reward = expected_era_reward - expected_operators_reward;
+
+        // verify that .staked is copied and .reward is added
+        let era_rewards = GeneralEraInfo::<TestRuntime>::get(starting_era).unwrap();
+        assert_eq!(staked_amount, era_rewards.staked);
+        assert_eq!(
+            expected_era_reward,
+            era_rewards.rewards.dapi + era_rewards.rewards.stakers
+        );
+        assert_eq!(expected_operators_reward, era_rewards.rewards.dapi);
+        assert_eq!(expected_stakers_reward, era_rewards.rewards.stakers);
+    })
+}
+
 // #[test]
 // fn new_era_forcing() {
 //     ExternalityBuilder::build().execute_with(|| {
