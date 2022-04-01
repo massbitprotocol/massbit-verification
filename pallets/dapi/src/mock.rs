@@ -1,4 +1,4 @@
-use crate::{self as pallet_dapi_staking, weights};
+use crate::{self as pallet_dapi, weights};
 
 use frame_support::{
 	construct_runtime, parameter_types,
@@ -8,6 +8,8 @@ use frame_support::{
 use sp_core::{H160, H256};
 
 use codec::{Decode, Encode};
+use frame_support::traits::ConstU32;
+use frame_system::EnsureRoot;
 use sp_io::TestExternalities;
 use sp_runtime::{
 	testing::Header,
@@ -56,6 +58,7 @@ construct_runtime!(
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
 		DapiStaking: pallet_dapi_staking::{Pallet, Call, Storage, Event<T>},
+		Dapi: pallet_dapi::{Pallet, Call, Storage, Event<T>},
 	}
 );
 
@@ -147,7 +150,7 @@ impl pallet_dapi_staking::Config for TestRuntime {
 	type MaxUnlockingChunks = MaxUnlockingChunks;
 	type UnbondingPeriod = UnbondingPeriod;
 	type MaxEraStakeValues = MaxEraStakeValues;
-	type WeightInfo = weights::SubstrateWeight<TestRuntime>;
+	type WeightInfo = pallet_dapi_staking::weights::SubstrateWeight<TestRuntime>;
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Encode, Decode, Debug, scale_info::TypeInfo)]
@@ -157,6 +160,17 @@ impl Default for MockProvider {
 	fn default() -> Self {
 		MockProvider([1; 36])
 	}
+}
+
+impl pallet_dapi::Config for TestRuntime {
+	type Event = Event;
+	type Currency = Balances;
+	type StakingInterface = DapiStaking;
+	type AddOracleOrigin = EnsureRoot<AccountId>;
+	type AddFishermanOrigin = EnsureRoot<AccountId>;
+	type StringLimit = ConstU32<64>;
+	type MassbitId = MockProvider;
+	type WeightInfo = weights::SubstrateWeight<TestRuntime>;
 }
 
 pub struct ExternalityBuilder;
@@ -191,41 +205,4 @@ impl ExternalityBuilder {
 		ext.execute_with(|| System::set_block_number(1));
 		ext
 	}
-}
-
-/// Used to run to the specified block number
-pub fn run_to_block(n: u64) {
-	while System::block_number() < n {
-		DapiStaking::on_finalize(System::block_number());
-		System::set_block_number(System::block_number() + 1);
-		// This is performed outside of dapi staking but we expect it before on_initialize
-		DapiStaking::on_unbalanced(Balances::issue(BLOCK_REWARD));
-		DapiStaking::on_initialize(System::block_number());
-	}
-}
-
-/// Used to run the specified number of blocks
-pub fn run_for_blocks(n: u64) {
-	run_to_block(System::block_number() + n);
-}
-
-/// Advance blocks to the beginning of an era.
-///
-/// Function has no effect if era is already passed.
-pub fn advance_to_era(n: EraIndex) {
-	while DapiStaking::current_era() < n {
-		run_for_blocks(1);
-	}
-}
-
-/// Initialize first block.
-/// This method should only be called once in a UT otherwise the first block will get initialized multiple times.
-pub fn initialize_first_block() {
-	// This assert prevents method misuse
-	assert_eq!(System::block_number(), 1 as BlockNumber);
-
-	// This is performed outside of dapi staking but we expect it before on_initialize
-	DapiStaking::on_unbalanced(Balances::issue(BLOCK_REWARD));
-	DapiStaking::on_initialize(System::block_number());
-	run_to_block(2);
 }
