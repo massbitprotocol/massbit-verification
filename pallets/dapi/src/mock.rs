@@ -1,4 +1,4 @@
-use crate::{self as pallet_dapi_staking, weights};
+use crate::{self as pallet_dapi, weights};
 
 use frame_support::{
 	construct_runtime, parameter_types,
@@ -8,6 +8,8 @@ use frame_support::{
 use sp_core::{H160, H256};
 
 use codec::{Decode, Encode};
+use frame_support::traits::ConstU32;
+use frame_system::EnsureRoot;
 use sp_io::TestExternalities;
 use sp_runtime::{
 	testing::Header,
@@ -56,6 +58,7 @@ construct_runtime!(
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		Timestamp: pallet_timestamp::{Pallet, Call, Storage, Inherent},
 		DapiStaking: pallet_dapi_staking::{Pallet, Call, Storage, Event<T>},
+		Dapi: pallet_dapi::{Pallet, Call, Storage, Event<T>},
 	}
 );
 
@@ -147,7 +150,7 @@ impl pallet_dapi_staking::Config for TestRuntime {
 	type MaxUnlockingChunks = MaxUnlockingChunks;
 	type UnbondingPeriod = UnbondingPeriod;
 	type MaxEraStakeValues = MaxEraStakeValues;
-	type WeightInfo = weights::SubstrateWeight<TestRuntime>;
+	type WeightInfo = pallet_dapi_staking::weights::SubstrateWeight<TestRuntime>;
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Encode, Decode, Debug, scale_info::TypeInfo)]
@@ -157,6 +160,17 @@ impl Default for MockProvider {
 	fn default() -> Self {
 		MockProvider([1; 36])
 	}
+}
+
+impl pallet_dapi::Config for TestRuntime {
+	type Event = Event;
+	type Currency = Balances;
+	type StakingInterface = DapiStaking;
+	type AddOracleOrigin = EnsureRoot<AccountId>;
+	type AddFishermanOrigin = EnsureRoot<AccountId>;
+	type StringLimit = ConstU32<64>;
+	type MassbitId = MockProvider;
+	type WeightInfo = weights::SubstrateWeight<TestRuntime>;
 }
 
 pub struct ExternalityBuilder;

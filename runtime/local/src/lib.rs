@@ -6,6 +6,7 @@
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+use codec::{Decode, Encode};
 use pallet_grandpa::{
 	fg_primitives, AuthorityId as GrandpaId, AuthorityList as GrandpaAuthorityList,
 };
@@ -23,6 +24,7 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 
+use frame_support::traits::OnUnbalanced;
 pub use frame_support::{
 	construct_runtime, parameter_types,
 	traits::{Currency, KeyOwnerProofSystem, StorageInfo},
@@ -31,10 +33,6 @@ pub use frame_support::{
 		IdentityFee, Weight,
 	},
 	PalletId, RuntimeDebug, StorageValue,
-};
-use frame_support::{
-	traits::{ConstU32, OnUnbalanced},
-	BoundedVec,
 };
 use frame_system::EnsureRoot;
 pub use pallet_balances::Call as BalancesCall;
@@ -243,6 +241,13 @@ impl pallet_sudo::Config for Runtime {
 	type Call = Call;
 }
 
+impl pallet_utility::Config for Runtime {
+	type Event = Event;
+	type Call = Call;
+	type PalletsOrigin = OriginCaller;
+	type WeightInfo = ();
+}
+
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
 
 pub struct OnBlockReward;
@@ -277,7 +282,7 @@ parameter_types! {
 
 impl pallet_dapi_staking::Config for Runtime {
 	type Currency = Balances;
-	type Provider = BoundedVec<u8, ConstU32<64>>;
+	type Provider = MassbitId;
 	type BlockPerEra = BlockPerEra;
 	type RegisterDeposit = RegisterDeposit;
 	type OperatorRewardPercentage = OperatorRewardPercentage;
@@ -302,7 +307,18 @@ impl pallet_dapi::Config for Runtime {
 	type StakingInterface = DapiStaking;
 	type AddOracleOrigin = EnsureRoot<AccountId>;
 	type AddFishermanOrigin = EnsureRoot<AccountId>;
-	type MaxBytesInChainId = MaxBytesInChainId;
+	type StringLimit = MaxBytesInChainId;
+	type MassbitId = MassbitId;
+	type WeightInfo = pallet_dapi::weights::SubstrateWeight<Runtime>;
+}
+
+#[derive(PartialEq, Eq, Copy, Clone, Encode, Decode, RuntimeDebug, scale_info::TypeInfo)]
+pub struct MassbitId([u8; 36]);
+
+impl Default for MassbitId {
+	fn default() -> Self {
+		MassbitId([1; 36])
+	}
 }
 
 construct_runtime!(
@@ -318,6 +334,7 @@ construct_runtime!(
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		TransactionPayment: pallet_transaction_payment::{Pallet, Storage},
 		Sudo: pallet_sudo::{Pallet, Call, Config<T>, Storage, Event<T>},
+		Utility: pallet_utility::{Pallet, Call, Event},
 		Dapi: pallet_dapi::{Pallet, Call, Storage, Config<T>, Event<T>},
 		DapiStaking: pallet_dapi_staking::{Pallet, Call, Storage, Event<T>},
 		BlockReward: pallet_block_reward::{Pallet},
@@ -510,6 +527,7 @@ impl_runtime_apis! {
 
 			let mut list = Vec::<BenchmarkList>::new();
 
+			list_benchmark!(list, extra, pallet_dapi, Dapi);
 			list_benchmark!(list, extra, pallet_dapi_staking, DapiStaking);
 
 			let storage_info = AllPalletsWithSystem::storage_info();
@@ -540,6 +558,7 @@ impl_runtime_apis! {
 			let params = (&config, &whitelist);
 
 			add_benchmark!(params, batches, frame_system, SystemBench::<Runtime>);
+			add_benchmark!(params, batches, pallet_dapi, Dapi);
 			add_benchmark!(params, batches, pallet_dapi_staking, DapiStaking);
 
 			if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
