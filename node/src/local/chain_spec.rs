@@ -57,7 +57,6 @@ pub fn development_config() -> Result<ChainSpec, String> {
 					get_account_id_from_seed::<sr25519::Public>("Ferdie"),
 				],
 				vec![get_account_id_from_seed::<sr25519::Public>("Ferdie")],
-				vec![get_account_id_from_seed::<sr25519::Public>("Ferdie")],
 			)
 		},
 		vec![],
@@ -73,7 +72,6 @@ fn testnet_genesis(
 	initial_authorities: Vec<(AuraId, GrandpaId)>,
 	root_key: AccountId,
 	endowed_accounts: Vec<AccountId>,
-	initial_oracles: Vec<AccountId>,
 	initial_fishermen: Vec<AccountId>,
 ) -> GenesisConfig {
 	GenesisConfig {
@@ -92,10 +90,7 @@ fn testnet_genesis(
 			authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect(),
 		},
 		sudo: SudoConfig { key: Some(root_key) },
-		dapi: DapiConfig {
-			fishermen: initial_fishermen.iter().map(|x| x.clone()).collect(),
-			oracles: initial_oracles.iter().map(|x| x.clone()).collect(),
-		},
+		dapi: DapiConfig { fishermen: initial_fishermen.iter().map(|x| x.clone()).collect() },
 	}
 }
 

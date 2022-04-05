@@ -47,10 +47,10 @@ fn advance_to_era<T: Config>(n: EraIndex) {
 }
 
 /// Used to register a provider.
-fn register_provider<T: Config>() -> Result<(T::AccountId, T::Provider), &'static str> {
+fn register_provider<T: Config>() -> Result<(T::AccountId, T::ProviderId), &'static str> {
 	let operator: T::AccountId = account("operator", 10000, SEED);
 	T::Currency::make_free_balance_be(&operator, BalanceOf::<T>::max_value());
-	let provider_id = T::Provider::default();
+	let provider_id = T::ProviderId::default();
 	let deposit = T::RegisterDeposit::get() + T::MinimumStakingAmount::get();
 	DapiStaking::<T>::register(operator.clone(), provider_id.clone(), deposit)?;
 	Ok((operator, provider_id))
@@ -62,7 +62,7 @@ fn register_provider<T: Config>() -> Result<(T::AccountId, T::Provider), &'stati
 /// Returns all created staker accounts in a vector.
 fn prepare_stake<T: Config>(
 	number_of_stakers: u32,
-	provider_id: &T::Provider,
+	provider_id: &T::ProviderId,
 	seed: u32,
 ) -> Result<Vec<T::AccountId>, &'static str> {
 	let stake_balance = T::MinimumStakingAmount::get();
@@ -130,7 +130,7 @@ benchmarks! {
 
 	}: _(RawOrigin::Signed(staker.clone()), provider_id.clone(), amount.clone())
 	verify {
-		assert_last_event::<T>(Event::<T>::Stake(staker, provider_id, amount).into());
+		assert_last_event::<T>(Event::<T>::Stake{staker, provider_id, amount}.into());
 	}
 
 	unstake {
@@ -147,7 +147,7 @@ benchmarks! {
 
 	}: _(RawOrigin::Signed(staker.clone()), provider_id.clone(), amount.clone())
 	verify {
-		assert_last_event::<T>(Event::<T>::Unstake(staker, provider_id, amount).into());
+		assert_last_event::<T>(Event::<T>::Unstake{staker, provider_id, amount}.into());
 	}
 
 	withdraw_unstaked {
@@ -168,7 +168,7 @@ benchmarks! {
 		advance_to_era::<T>(current_era + 1 + T::UnbondingPeriod::get());
 	}: _(RawOrigin::Signed(staker.clone()))
 	verify {
-		assert_last_event::<T>(Event::<T>::Withdrawn(staker, unstake_amount).into());
+		assert_last_event::<T>(Event::<T>::Withdrawn{staker, amount: unstake_amount}.into());
 	}
 
 	claim_staker {

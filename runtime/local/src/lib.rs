@@ -282,7 +282,7 @@ parameter_types! {
 
 impl pallet_dapi_staking::Config for Runtime {
 	type Currency = Balances;
-	type Provider = MassbitId;
+	type ProviderId = MassbitId;
 	type BlockPerEra = BlockPerEra;
 	type RegisterDeposit = RegisterDeposit;
 	type OperatorRewardPercentage = OperatorRewardPercentage;
@@ -299,16 +299,17 @@ impl pallet_dapi_staking::Config for Runtime {
 
 parameter_types! {
 	pub const MaxBytesInChainId: u32 = 64;
+	pub const MaxDepositChunks: u32 = 5;
 }
 
 impl pallet_dapi::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
 	type StakingInterface = DapiStaking;
-	type AddOracleOrigin = EnsureRoot<AccountId>;
 	type AddFishermanOrigin = EnsureRoot<AccountId>;
 	type StringLimit = MaxBytesInChainId;
 	type MassbitId = MassbitId;
+	type MaxDepositChunks = MaxDepositChunks;
 	type WeightInfo = pallet_dapi::weights::SubstrateWeight<Runtime>;
 }
 

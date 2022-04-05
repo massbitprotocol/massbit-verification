@@ -139,7 +139,7 @@ impl pallet_dapi_staking::Config for TestRuntime {
 	type BlockPerEra = BlockPerEra;
 	type RegisterDeposit = RegisterDeposit;
 	type OperatorRewardPercentage = OperatorRewardPercentage;
-	type Provider = MockProvider;
+	type ProviderId = MockProvider;
 	type MaxNumberOfStakersPerProvider = MaxNumberOfStakersPerProvider;
 	type MinimumStakingAmount = MinimumStakingAmount;
 	type PalletId = DapiStakingPalletId;
