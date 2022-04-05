@@ -142,7 +142,7 @@ impl pallet_dapi_staking::Config for TestRuntime {
 	type BlockPerEra = BlockPerEra;
 	type RegisterDeposit = RegisterDeposit;
 	type OperatorRewardPercentage = OperatorRewardPercentage;
-	type Provider = MockProvider;
+	type ProviderId = MockProvider;
 	type MaxNumberOfStakersPerProvider = MaxNumberOfStakersPerProvider;
 	type MinimumStakingAmount = MinimumStakingAmount;
 	type PalletId = DapiStakingPalletId;
@@ -166,11 +166,11 @@ impl pallet_dapi::Config for TestRuntime {
 	type Event = Event;
 	type Currency = Balances;
 	type StakingInterface = DapiStaking;
-	type AddOracleOrigin = EnsureRoot<AccountId>;
 	type AddFishermanOrigin = EnsureRoot<AccountId>;
 	type StringLimit = ConstU32<64>;
 	type MassbitId = MockProvider;
 	type WeightInfo = weights::SubstrateWeight<TestRuntime>;
+	type MaxDepositChunks = ConstU32<10>;
 }
 
 pub struct ExternalityBuilder;

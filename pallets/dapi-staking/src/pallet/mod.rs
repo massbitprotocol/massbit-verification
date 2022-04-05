@@ -1,8 +1,7 @@
 use super::*;
 use frame_support::{
-	dispatch::DispatchResult,
+	dispatch::{DispatchResult, RawOrigin},
 	ensure,
-	pallet_prelude::*,
 	traits::{
 		Currency, ExistenceRequirement, Get, Imbalance, LockIdentifier, LockableCurrency,
 		OnUnbalanced, ReservableCurrency, WithdrawReasons,
@@ -10,19 +9,20 @@ use frame_support::{
 	weights::Weight,
 	PalletId,
 };
-use frame_system::{ensure_root, ensure_signed, pallet_prelude::*};
+use frame_system::{ensure_root, ensure_signed};
 use sp_runtime::{
 	traits::{AccountIdConversion, CheckedAdd, Saturating, Zero},
 	ArithmeticError, Perbill,
 };
 use sp_std::convert::From;
 
-const STAKING_ID: LockIdentifier = *b"apistake";
+const STAKING_ID: LockIdentifier = *b"dapistak";
 
 #[frame_support::pallet]
 pub mod pallet {
 	use super::*;
-	use frame_support::dispatch::RawOrigin;
+	use frame_support::pallet_prelude::*;
+	use frame_system::pallet_prelude::*;
 
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
@@ -58,8 +58,8 @@ pub mod pallet {
 		type Currency: LockableCurrency<Self::AccountId, Moment = Self::BlockNumber>
 			+ ReservableCurrency<Self::AccountId>;
 
-		/// Provider id.
-		type Provider: Parameter + Member + Default;
+		/// Provider Id.
+		type ProviderId: Parameter + Member + Default;
 
 		/// Number of blocks per era.
 		#[pallet::constant]
@@ -83,7 +83,7 @@ pub mod pallet {
 		#[pallet::constant]
 		type MinimumStakingAmount: Get<BalanceOf<Self>>;
 
-		/// Dapi staking pallet Id
+		/// Dapi staking pallet Id.
 		#[pallet::constant]
 		type PalletId: Get<PalletId>;
 
@@ -98,7 +98,6 @@ pub mod pallet {
 
 		/// Number of eras that need to pass until unstaked value can be withdrawn.
 		/// Current era is always counted as full era (regardless how much blocks are remaining).
-		/// When set to `0`, it's equal to having no unbonding period.
 		#[pallet::constant]
 		type UnbondingPeriod: Get<u32>;
 
@@ -121,7 +120,7 @@ pub mod pallet {
 		type WeightInfo: WeightInfo;
 	}
 
-	/// Bonded amount for the staker
+	/// Bonded amount for the staker.
 	#[pallet::storage]
 	#[pallet::getter(fn ledger)]
 	pub type Ledger<T: Config> =
@@ -151,7 +150,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn provider_info)]
 	pub(crate) type RegisteredProviders<T: Config> =
-		StorageMap<_, Blake2_128Concat, T::Provider, ProviderInfo<T::AccountId>>;
+		StorageMap<_, Blake2_128Concat, T::ProviderId, ProviderInfo<T::AccountId>>;
 
 	/// Total staked, locked & rewarded for a particular era
 	#[pallet::storage]
@@ -165,7 +164,7 @@ pub mod pallet {
 	pub type ProviderEraStake<T: Config> = StorageDoubleMap<
 		_,
 		Blake2_128Concat,
-		T::Provider,
+		T::ProviderId,
 		Twox64Concat,
 		EraIndex,
 		ProviderStakeInfo<BalanceOf<T>>,
@@ -178,7 +177,7 @@ pub mod pallet {
 		Blake2_128Concat,
 		T::AccountId,
 		Blake2_128Concat,
-		T::Provider,
+		T::ProviderId,
 		StakerInfo<BalanceOf<T>>,
 		ValueQuery,
 	>;
@@ -187,19 +186,28 @@ pub mod pallet {
 	#[pallet::generate_deposit(pub(crate) fn deposit_event)]
 	pub enum Event<T: Config> {
 		/// Account has staked funds on a provider.
-		Stake(T::AccountId, T::Provider, BalanceOf<T>),
+		Stake { staker: T::AccountId, provider_id: T::ProviderId, amount: BalanceOf<T> },
 		/// Account has unbonded & unstaked some funds. Unbonding process begins.
-		Unstake(T::AccountId, T::Provider, BalanceOf<T>),
+		Unstake { staker: T::AccountId, provider_id: T::ProviderId, amount: BalanceOf<T> },
 		/// Account has fully withdrawn all staked amount from an unregistered provider.
-		WithdrawFromUnregistered(T::AccountId, T::Provider, BalanceOf<T>),
+		WithdrawFromUnregistered {
+			who: T::AccountId,
+			provider_id: T::ProviderId,
+			amount: BalanceOf<T>,
+		},
 		/// Account has withdrawn unbonded funds.
-		Withdrawn(T::AccountId, BalanceOf<T>),
+		Withdrawn { staker: T::AccountId, amount: BalanceOf<T> },
 		/// New dapi staking era. Distribute era rewards to providers.
-		NewDapiStakingEra(EraIndex),
+		NewDapiStakingEra { era: EraIndex },
 		/// Reward paid to staker or operator.
-		Reward(T::AccountId, T::Provider, EraIndex, BalanceOf<T>),
+		Reward {
+			who: T::AccountId,
+			provider_id: T::ProviderId,
+			era: EraIndex,
+			amount: BalanceOf<T>,
+		},
 		/// Provider removed from dapi staking.
-		ProviderUnregistered(T::Provider),
+		ProviderUnregistered(T::ProviderId),
 	}
 
 	#[pallet::error]
@@ -264,7 +272,7 @@ pub mod pallet {
 					ForceEra::<T>::put(Forcing::NotForcing);
 				}
 
-				Self::deposit_event(Event::<T>::NewDapiStakingEra(next_era));
+				Self::deposit_event(Event::<T>::NewDapiStakingEra { era: next_era });
 
 				consumed_weight + T::DbWeight::get().reads_writes(5, 3)
 			} else {
@@ -279,22 +287,24 @@ pub mod pallet {
 		#[pallet::weight(T::WeightInfo::withdraw_from_unregistered_staker())]
 		pub fn withdraw_from_unregistered_staker(
 			origin: OriginFor<T>,
-			provider_id: T::Provider,
+			provider_id: T::ProviderId,
 		) -> DispatchResultWithPostInfo {
 			let staker = ensure_signed(origin)?;
 
 			let provider_info = RegisteredProviders::<T>::get(&provider_id)
 				.ok_or(Error::<T>::NotOperatedProvider)?;
 
-			let (unregistered_era, unbonding_era) =
-				if let ProviderState::Unregistered(e1, e2) = provider_info.state {
-					(e1, e2)
-				} else {
-					return Err(Error::<T>::NotUnregisteredProvider.into())
-				};
+			let unregistered_era = if let ProviderState::Unregistered(e) = provider_info.state {
+				e
+			} else {
+				return Err(Error::<T>::NotUnregisteredProvider.into())
+			};
 
 			let current_era = Self::current_era();
-			ensure!(current_era > unbonding_era, Error::<T>::NothingToWithdraw);
+			ensure!(
+				current_era > unregistered_era + T::UnbondingPeriod::get(),
+				Error::<T>::NothingToWithdraw
+			);
 
 			let mut staker_info = Self::staker_info(&staker, &provider_id);
 			let staked_value = staker_info.latest_staked_value();
@@ -321,11 +331,11 @@ pub mod pallet {
 				}
 			});
 
-			Self::deposit_event(Event::<T>::WithdrawFromUnregistered(
-				staker,
+			Self::deposit_event(Event::<T>::WithdrawFromUnregistered {
+				who: staker,
 				provider_id,
-				staked_value,
-			));
+				amount: staked_value,
+			});
 
 			Ok(().into())
 		}
@@ -334,7 +344,7 @@ pub mod pallet {
 		#[pallet::weight(T::WeightInfo::withdraw_from_unregistered_operator())]
 		pub fn withdraw_from_unregistered_operator(
 			origin: OriginFor<T>,
-			provider_id: T::Provider,
+			provider_id: T::ProviderId,
 		) -> DispatchResultWithPostInfo {
 			let operator = ensure_signed(origin)?;
 
@@ -343,41 +353,40 @@ pub mod pallet {
 			ensure!(provider_info.operator == operator, Error::<T>::NotOwnedProvider);
 			ensure!(!provider_info.unreserved, Error::<T>::NothingToWithdraw);
 
-			let unbonding_era = if let ProviderState::Unregistered(_, e) = provider_info.state {
+			let unregistered_era = if let ProviderState::Unregistered(e) = provider_info.state {
 				e
 			} else {
 				return Err(Error::<T>::NotUnregisteredProvider.into())
 			};
 
 			let current_era = Self::current_era();
-			ensure!(current_era > unbonding_era, Error::<T>::NothingToWithdraw);
+			ensure!(
+				current_era > unregistered_era + T::UnbondingPeriod::get(),
+				Error::<T>::NothingToWithdraw
+			);
 
 			provider_info.unreserved = true;
 			RegisteredProviders::<T>::insert(&provider_id, provider_info);
 
-			T::Currency::unreserve(&operator, T::RegisterDeposit::get());
+			let unreserve_amount = T::RegisterDeposit::get();
+			T::Currency::unreserve(&operator, unreserve_amount);
 
-			Self::deposit_event(Event::<T>::WithdrawFromUnregistered(
-				operator,
+			Self::deposit_event(Event::<T>::WithdrawFromUnregistered {
+				who: operator,
 				provider_id,
-				T::RegisterDeposit::get(),
-			));
+				amount: unreserve_amount,
+			});
 
 			Ok(().into())
 		}
 
 		/// Lock up and stake balance of the origin account.
 		///
-		/// `value` must be more than the `minimum_balance` specified by `T::Currency`
-		/// unless account already has bonded value equal or more than 'minimum_balance'.
-		///
-		/// The dispatch origin for this call must be _Signed_ by the staker's account.
-		///
 		/// Effects of staking will be felt at the beginning of the next era.
 		#[pallet::weight(T::WeightInfo::stake())]
 		pub fn stake(
 			origin: OriginFor<T>,
-			provider_id: T::Provider,
+			provider_id: T::ProviderId,
 			#[pallet::compact] value: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
 			let staker = ensure_signed(origin)?;
@@ -436,7 +445,7 @@ pub mod pallet {
 			Self::update_staker_info(&staker, &provider_id, staker_info);
 			ProviderEraStake::<T>::insert(&provider_id, current_era, staking_info);
 
-			Self::deposit_event(Event::<T>::Stake(staker, provider_id, value_to_stake));
+			Self::deposit_event(Event::<T>::Stake { staker, provider_id, amount: value_to_stake });
 			Ok(().into())
 		}
 
@@ -451,7 +460,7 @@ pub mod pallet {
 		#[pallet::weight(T::WeightInfo::unstake())]
 		pub fn unstake(
 			origin: OriginFor<T>,
-			provider_id: T::Provider,
+			provider_id: T::ProviderId,
 			#[pallet::compact] value: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
 			let staker = ensure_signed(origin)?;
@@ -459,7 +468,6 @@ pub mod pallet {
 			ensure!(value > Zero::zero(), Error::<T>::UnstakingWithNoValue);
 			ensure!(Self::is_active_provider(&provider_id), Error::<T>::NotOperatedProvider);
 
-			// Get the latest era staking points for the provider.
 			let mut staker_info = Self::staker_info(&staker, &provider_id);
 			let staked_value = staker_info.latest_staked_value();
 			ensure!(staked_value > Zero::zero(), Error::<T>::NotStakedProvider);
@@ -468,7 +476,6 @@ pub mod pallet {
 			let mut provider_stake_info =
 				Self::provider_stake_info(&provider_id, current_era).unwrap_or_default();
 
-			// Calculate the value which will be unstaked.
 			let remaining = staked_value.saturating_sub(value);
 			let value_to_unstake = if remaining < T::MinimumStakingAmount::get() {
 				provider_stake_info.number_of_stakers =
@@ -514,7 +521,11 @@ pub mod pallet {
 			Self::update_staker_info(&staker, &provider_id, staker_info);
 			ProviderEraStake::<T>::insert(&provider_id, current_era, provider_stake_info);
 
-			Self::deposit_event(Event::<T>::Unstake(staker, provider_id, value_to_unstake));
+			Self::deposit_event(Event::<T>::Unstake {
+				staker,
+				provider_id,
+				amount: value_to_unstake,
+			});
 
 			Ok(().into())
 		}
@@ -545,7 +556,7 @@ pub mod pallet {
 				}
 			});
 
-			Self::deposit_event(Event::<T>::Withdrawn(staker, withdraw_amount));
+			Self::deposit_event(Event::<T>::Withdrawn { staker, amount: withdraw_amount });
 
 			Ok(().into())
 		}
@@ -554,7 +565,7 @@ pub mod pallet {
 		#[pallet::weight(T::WeightInfo::claim_staker())]
 		pub fn claim_staker(
 			origin: OriginFor<T>,
-			provider_id: T::Provider,
+			provider_id: T::ProviderId,
 		) -> DispatchResultWithPostInfo {
 			let staker = ensure_signed(origin)?;
 
@@ -564,7 +575,7 @@ pub mod pallet {
 
 			let provider_info = RegisteredProviders::<T>::get(&provider_id)
 				.ok_or(Error::<T>::NotOperatedProvider)?;
-			if let ProviderState::Unregistered(unregistered_era, _) = provider_info.state {
+			if let ProviderState::Unregistered(unregistered_era) = provider_info.state {
 				ensure!(era < unregistered_era, Error::<T>::NotOperatedProvider);
 			}
 
@@ -586,16 +597,16 @@ pub mod pallet {
 				WithdrawReasons::TRANSFER,
 				ExistenceRequirement::AllowDeath,
 			)?;
-
 			T::Currency::resolve_creating(&staker, reward_imbalance);
+
 			Self::update_staker_info(&staker, &provider_id, staker_info);
 
-			Self::deposit_event(Event::<T>::Reward(
-				staker.clone(),
-				provider_id.clone(),
+			Self::deposit_event(Event::<T>::Reward {
+				who: staker,
+				provider_id,
 				era,
-				staker_reward,
-			));
+				amount: staker_reward,
+			});
 
 			Ok(().into())
 		}
@@ -604,7 +615,7 @@ pub mod pallet {
 		#[pallet::weight(T::WeightInfo::claim_operator())]
 		pub fn claim_operator(
 			origin: OriginFor<T>,
-			provider_id: T::Provider,
+			provider_id: T::ProviderId,
 			#[pallet::compact] era: EraIndex,
 		) -> DispatchResultWithPostInfo {
 			let _ = ensure_signed(origin)?;
@@ -613,7 +624,7 @@ pub mod pallet {
 				.ok_or(Error::<T>::NotOperatedProvider)?;
 
 			let current_era = Self::current_era();
-			if let ProviderState::Unregistered(unregistered_era, _) = provider_info.state {
+			if let ProviderState::Unregistered(unregistered_era) = provider_info.state {
 				ensure!(era < unregistered_era, Error::<T>::NotOperatedProvider);
 			}
 			ensure!(era < current_era, Error::<T>::EraOutOfBounds);
@@ -638,17 +649,17 @@ pub mod pallet {
 				WithdrawReasons::TRANSFER,
 				ExistenceRequirement::AllowDeath,
 			)?;
-
 			T::Currency::resolve_creating(&provider_info.operator, reward_imbalance);
-			Self::deposit_event(Event::<T>::Reward(
-				provider_info.operator.clone(),
-				provider_id.clone(),
-				era,
-				operator_reward,
-			));
 
 			provider_stake_info.provider_reward_claimed = true;
 			ProviderEraStake::<T>::insert(&provider_id, era, provider_stake_info);
+
+			Self::deposit_event(Event::<T>::Reward {
+				who: provider_info.operator.clone(),
+				provider_id: provider_id.clone(),
+				era,
+				amount: operator_reward,
+			});
 
 			Ok(().into())
 		}
@@ -684,13 +695,13 @@ pub mod pallet {
 	impl<T: Config>
 		Staking<
 			T::AccountId,
-			T::Provider,
+			T::ProviderId,
 			<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
 		> for Pallet<T>
 	{
 		fn register(
 			operator: T::AccountId,
-			provider_id: T::Provider,
+			provider_id: T::ProviderId,
 			deposit: <<T as Config>::Currency as Currency<
 				<T as frame_system::Config>::AccountId,
 			>>::Balance,
@@ -700,26 +711,23 @@ pub mod pallet {
 				Error::<T>::AlreadyRegisteredProvider
 			);
 
+			let min_deposit = T::RegisterDeposit::get();
 			ensure!(
-				deposit >= T::RegisterDeposit::get() + T::MinimumStakingAmount::get(),
+				deposit >= min_deposit + T::MinimumStakingAmount::get(),
 				Error::<T>::InsufficientValue
 			);
 
-			T::Currency::reserve(&operator, T::RegisterDeposit::get())?;
+			T::Currency::reserve(&operator, min_deposit)?;
 
 			RegisteredProviders::<T>::insert(&provider_id, ProviderInfo::new(operator.clone()));
 
-			let stake_amount = deposit.saturating_sub(T::RegisterDeposit::get());
-			Self::stake(
-				RawOrigin::Signed(operator.clone()).into(),
-				provider_id.clone(),
-				stake_amount,
-			)?;
+			let stake_amount = deposit.saturating_sub(min_deposit);
+			Self::stake(RawOrigin::Signed(operator).into(), provider_id, stake_amount)?;
 
 			Ok(().into())
 		}
 
-		fn unregister(provider_id: T::Provider) -> DispatchResultWithPostInfo {
+		fn unregister(provider_id: T::ProviderId) -> DispatchResultWithPostInfo {
 			let mut provider_info = RegisteredProviders::<T>::get(&provider_id)
 				.ok_or(Error::<T>::NotOperatedProvider)?;
 			ensure!(
@@ -728,8 +736,7 @@ pub mod pallet {
 			);
 
 			let current_era = Self::current_era();
-			provider_info.state =
-				ProviderState::Unregistered(current_era, current_era + T::UnbondingPeriod::get());
+			provider_info.state = ProviderState::Unregistered(current_era);
 			RegisteredProviders::<T>::insert(&provider_id, provider_info);
 
 			Ok(().into())
@@ -758,7 +765,7 @@ pub mod pallet {
 		/// If staker_info is empty, remove it from the DB. Otherwise, store it.
 		fn update_staker_info(
 			staker: &T::AccountId,
-			provider_id: &T::Provider,
+			provider_id: &T::ProviderId,
 			staker_info: StakerInfo<BalanceOf<T>>,
 		) {
 			if staker_info.is_empty() {
@@ -804,7 +811,7 @@ pub mod pallet {
 			for (provider_id, provider_info) in RegisteredProviders::<T>::iter() {
 				// Ignore provider if it was unregistered
 				consumed_weight = consumed_weight.saturating_add(T::DbWeight::get().reads(1));
-				if let ProviderState::Unregistered(_, _) = provider_info.state {
+				if let ProviderState::Unregistered(_) = provider_info.state {
 					continue
 				}
 
@@ -838,7 +845,7 @@ pub mod pallet {
 		}
 
 		/// `true` if provider is active, `false` if it has been unregistered
-		fn is_active_provider(provider_id: &T::Provider) -> bool {
+		fn is_active_provider(provider_id: &T::ProviderId) -> bool {
 			RegisteredProviders::<T>::get(provider_id)
 				.map_or(false, |provider_info| provider_info.state == ProviderState::Registered)
 		}

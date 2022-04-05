@@ -34,7 +34,7 @@ enum ProviderState {
 	Registered,
 	/// Provider has been unregistered and is inactive.
 	/// Claim for past eras and unbonding is still possible but no additional staking can be done.
-	Unregistered(EraIndex, EraIndex),
+	Unregistered(EraIndex),
 }
 
 #[derive(Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
@@ -68,15 +68,15 @@ impl Default for Forcing {
 	}
 }
 
-/// A record of rewards allocated for stakers and operators
+/// A record of rewards allocated for operators and stakers
 #[derive(PartialEq, Eq, Clone, Default, Encode, Decode, RuntimeDebug, TypeInfo)]
 pub struct RewardInfo<Balance: HasCompact> {
-	/// Total amount of rewards for stakers in an era
-	#[codec(compact)]
-	pub stakers: Balance,
 	/// Total amount of rewards for operators in an era
 	#[codec(compact)]
 	pub operators: Balance,
+	/// Total amount of rewards for stakers in an era
+	#[codec(compact)]
+	pub stakers: Balance,
 }
 
 /// A record for total rewards and total amount staked for an era
@@ -380,24 +380,6 @@ where
 	}
 }
 
-/// Instruction on how to handle reward payout for stakers.
-/// In order to make staking more competitive, majority of stakers will want to
-/// automatically restake anything they earn.
-#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo)]
-pub enum RewardDestination {
-	/// Rewards are transferred to stakers free balance without any further action.
-	FreeBalance,
-	/// Rewards are transferred to stakers balance and are immediately re-staked
-	/// on the contract from which the reward was received.
-	StakeBalance,
-}
-
-impl Default for RewardDestination {
-	fn default() -> Self {
-		RewardDestination::StakeBalance
-	}
-}
-
 /// Contains information about account's locked & unbonding balances.
 #[derive(Clone, PartialEq, Encode, Decode, Default, RuntimeDebug, TypeInfo)]
 pub struct AccountLedger<Balance: AtLeast32BitUnsigned + Default + Copy> {
@@ -406,8 +388,6 @@ pub struct AccountLedger<Balance: AtLeast32BitUnsigned + Default + Copy> {
 	pub locked: Balance,
 	/// Information about unbonding chunks.
 	unbonding_info: UnbondingInfo<Balance>,
-	/// Instruction on how to handle reward payout
-	reward_destination: RewardDestination,
 }
 
 impl<Balance: AtLeast32BitUnsigned + Default + Copy> AccountLedger<Balance> {
