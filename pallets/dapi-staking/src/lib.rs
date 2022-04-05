@@ -33,7 +33,7 @@ enum ProviderState {
 	/// Provider is registered and active.
 	Registered,
 	/// Provider has been unregistered and is inactive.
-	/// Claim for past eras and unbonding is still possible but no additional staking can be done.
+	/// Claim for past eras and unstaking is still possible but no additional staking can be done.
 	Unregistered(EraIndex),
 }
 
@@ -128,12 +128,6 @@ impl<Balance: AtLeast32BitUnsigned + Copy> EraStake<Balance> {
 
 /// Used to provide a compact and bounded storage for information about stakes in unclaimed eras.
 ///
-/// In order to avoid creating a separate storage entry for each `(staker, contract, era)` triplet,
-/// this struct is used to provide a more memory efficient solution.
-///
-/// Basic idea is to store `EraStake` structs into a vector from which a complete
-/// picture of **unclaimed eras** and stakes can be constructed.
-///
 /// # Example
 /// For simplicity, the following example will represent `EraStake` using `<era, stake>` notation.
 /// Let us assume we have the following vector in `StakerInfo` struct.
@@ -147,9 +141,9 @@ impl<Balance: AtLeast32BitUnsigned + Copy> EraStake<Balance> {
 /// 3. No entry for era **7** exists which means there were no changes from the former entry.
 ///    This means that in era **7**, staked amount was also **1500**
 /// 4. In era **8**, staker staked an additional **600**, increasing total stake to **2100**
-/// 5. In era **9**, staker unstaked everything from the contract (interpreted from `<9, 0>`)
+/// 5. In era **9**, staker unstaked everything from the provider (interpreted from `<9, 0>`)
 /// 6. No changes were made in era **10** so we can interpret this same as the previous entry which
-/// means **0** staked amount. 7. In era **11**, staker staked **500** on the contract, making his
+/// means **0** staked amount. 7. In era **11**, staker staked **500** on the provider, making his
 /// stake active again after 2 eras of inactivity.
 ///
 /// **NOTE:** It is important to understand that staker **DID NOT** claim any rewards during this

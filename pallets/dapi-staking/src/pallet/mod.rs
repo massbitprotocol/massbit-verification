@@ -83,7 +83,7 @@ pub mod pallet {
 		#[pallet::constant]
 		type MinimumStakingAmount: Get<BalanceOf<Self>>;
 
-		/// Dapi staking pallet Id.
+		/// dAPI staking pallet Id.
 		#[pallet::constant]
 		type PalletId: Get<PalletId>;
 
@@ -711,17 +711,17 @@ pub mod pallet {
 				Error::<T>::AlreadyRegisteredProvider
 			);
 
-			let min_deposit = T::RegisterDeposit::get();
+			let register_deposit = T::RegisterDeposit::get();
 			ensure!(
-				deposit >= min_deposit + T::MinimumStakingAmount::get(),
+				deposit >= register_deposit + T::MinimumStakingAmount::get(),
 				Error::<T>::InsufficientValue
 			);
 
-			T::Currency::reserve(&operator, min_deposit)?;
+			T::Currency::reserve(&operator, register_deposit)?;
 
 			RegisteredProviders::<T>::insert(&provider_id, ProviderInfo::new(operator.clone()));
 
-			let stake_amount = deposit.saturating_sub(min_deposit);
+			let stake_amount = deposit.saturating_sub(register_deposit);
 			Self::stake(RawOrigin::Signed(operator).into(), provider_id, stake_amount)?;
 
 			Ok(().into())

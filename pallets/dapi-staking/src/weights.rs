@@ -67,7 +67,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// Storage: DapiStaking GeneralEraInfo (r:1 w:1)
 	#[rustfmt::skip]
 	fn withdraw_from_unregistered_staker() -> Weight {
-		(66_746_000 as Weight)
+		(72_275_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(7 as Weight))
 			.saturating_add(T::DbWeight::get().writes(5 as Weight))
 	}
@@ -76,7 +76,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// Storage: System Account (r:1 w:1)
 	#[rustfmt::skip]
 	fn withdraw_from_unregistered_operator() -> Weight {
-		(42_209_000 as Weight)
+		(45_196_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(3 as Weight))
 			.saturating_add(T::DbWeight::get().writes(2 as Weight))
 	}
@@ -89,7 +89,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// Storage: Balances Locks (r:1 w:1)
 	#[rustfmt::skip]
 	fn stake() -> Weight {
-		(74_039_000 as Weight)
+		(101_191_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(7 as Weight))
 			.saturating_add(T::DbWeight::get().writes(5 as Weight))
 	}
@@ -102,7 +102,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// Storage: DapiStaking GeneralEraInfo (r:1 w:1)
 	#[rustfmt::skip]
 	fn unstake() -> Weight {
-		(63_179_000 as Weight)
+		(98_554_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(7 as Weight))
 			.saturating_add(T::DbWeight::get().writes(5 as Weight))
 	}
@@ -112,7 +112,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// Storage: DapiStaking GeneralEraInfo (r:1 w:1)
 	#[rustfmt::skip]
 	fn withdraw_unstaked() -> Weight {
-		(47_399_000 as Weight)
+		(77_307_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(4 as Weight))
 			.saturating_add(T::DbWeight::get().writes(3 as Weight))
 	}
@@ -123,7 +123,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// Storage: DapiStaking GeneralEraInfo (r:1 w:0)
 	#[rustfmt::skip]
 	fn claim_staker() -> Weight {
-		(27_713_000 as Weight)
+		(47_505_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(5 as Weight))
 			.saturating_add(T::DbWeight::get().writes(1 as Weight))
 	}
@@ -133,14 +133,14 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// Storage: DapiStaking GeneralEraInfo (r:1 w:0)
 	#[rustfmt::skip]
 	fn claim_operator() -> Weight {
-		(23_564_000 as Weight)
+		(40_409_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(4 as Weight))
 			.saturating_add(T::DbWeight::get().writes(1 as Weight))
 	}
 	// Storage: DapiStaking ForceEra (r:0 w:1)
 	#[rustfmt::skip]
 	fn force_new_era() -> Weight {
-		(1_132_000 as Weight)
+		(2_125_000 as Weight)
 			.saturating_add(T::DbWeight::get().writes(1 as Weight))
 	}
 }
@@ -156,7 +156,7 @@ impl WeightInfo for () {
 	// Storage: DapiStaking GeneralEraInfo (r:1 w:1)
 	#[rustfmt::skip]
 	fn withdraw_from_unregistered_staker() -> Weight {
-		(66_746_000 as Weight)
+		(72_275_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(7 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(5 as Weight))
 	}
@@ -165,7 +165,7 @@ impl WeightInfo for () {
 	// Storage: System Account (r:1 w:1)
 	#[rustfmt::skip]
 	fn withdraw_from_unregistered_operator() -> Weight {
-		(42_209_000 as Weight)
+		(45_196_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(3 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
 	}
@@ -178,7 +178,7 @@ impl WeightInfo for () {
 	// Storage: Balances Locks (r:1 w:1)
 	#[rustfmt::skip]
 	fn stake() -> Weight {
-		(74_039_000 as Weight)
+		(101_191_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(7 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(5 as Weight))
 	}
@@ -191,7 +191,7 @@ impl WeightInfo for () {
 	// Storage: DapiStaking GeneralEraInfo (r:1 w:1)
 	#[rustfmt::skip]
 	fn unstake() -> Weight {
-		(63_179_000 as Weight)
+		(98_554_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(7 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(5 as Weight))
 	}
@@ -201,7 +201,7 @@ impl WeightInfo for () {
 	// Storage: DapiStaking GeneralEraInfo (r:1 w:1)
 	#[rustfmt::skip]
 	fn withdraw_unstaked() -> Weight {
-		(47_399_000 as Weight)
+		(77_307_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(4 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(3 as Weight))
 	}
@@ -212,7 +212,7 @@ impl WeightInfo for () {
 	// Storage: DapiStaking GeneralEraInfo (r:1 w:0)
 	#[rustfmt::skip]
 	fn claim_staker() -> Weight {
-		(27_713_000 as Weight)
+		(47_505_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(5 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
 	}
@@ -222,14 +222,14 @@ impl WeightInfo for () {
 	// Storage: DapiStaking GeneralEraInfo (r:1 w:0)
 	#[rustfmt::skip]
 	fn claim_operator() -> Weight {
-		(23_564_000 as Weight)
+		(40_409_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(4 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
 	}
 	// Storage: DapiStaking ForceEra (r:0 w:1)
 	#[rustfmt::skip]
 	fn force_new_era() -> Weight {
-		(1_132_000 as Weight)
+		(2_125_000 as Weight)
 			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
 	}
 }

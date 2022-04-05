@@ -9,7 +9,7 @@ use frame_system::{Pallet as System, RawOrigin};
 use sp_runtime::traits::{Bounded, One};
 
 const SEED: u32 = 9000;
-const BLOCK_REWARD: u32 = 1000u32;
+const BLOCK_REWARD: u32 = 1000;
 
 /// Used to prepare Dapi staking for testing.
 /// Resets all existing storage ensuring a clean run for the code that follows.
@@ -92,11 +92,13 @@ benchmarks! {
 		let staker = stakers[0].clone();
 		let stake_amount = BalanceOf::<T>::max_value() / 2u32.into();
 
-		DapiStaking::<T>::stake(RawOrigin::Signed(staker.clone()).into(), provider_id.clone(), stake_amount.clone())?;
+		DapiStaking::<T>::stake(RawOrigin::Signed(staker.clone()).into(), provider_id.clone(), stake_amount)?;
+
 		DapiStaking::<T>::unregister(provider_id.clone())?;
 
 		let current_era = DapiStaking::<T>::current_era();
 		advance_to_era::<T>(current_era + 1 + T::UnbondingPeriod::get());
+
 	}: _(RawOrigin::Signed(staker.clone()), provider_id.clone())
 	verify {
 		let staker_info = DapiStaking::<T>::staker_info(&staker, &provider_id);
@@ -107,16 +109,16 @@ benchmarks! {
 		initialize::<T>();
 		let (operator, provider_id) = register_provider::<T>()?;
 
-		let stakers = prepare_stake::<T>(1, &provider_id, SEED)?;
-		let staker = stakers[0].clone();
-		let stake_amount = BalanceOf::<T>::max_value() / 2u32.into();
-
-		DapiStaking::<T>::stake(RawOrigin::Signed(staker.clone()).into(), provider_id.clone(), stake_amount.clone())?;
 		DapiStaking::<T>::unregister(provider_id.clone())?;
 
 		let current_era = DapiStaking::<T>::current_era();
 		advance_to_era::<T>(current_era + 1 + T::UnbondingPeriod::get());
+
 	}: _(RawOrigin::Signed(operator.clone()), provider_id.clone())
+	verify {
+		let provider = RegisteredProviders::<T>::get(&provider_id).unwrap();
+		assert!(provider.unreserved);
+	}
 
 	stake {
 		initialize::<T>();
@@ -128,7 +130,7 @@ benchmarks! {
 		let _ = T::Currency::make_free_balance_be(&staker, BalanceOf::<T>::max_value());
 		let amount = BalanceOf::<T>::max_value() / 2u32.into();
 
-	}: _(RawOrigin::Signed(staker.clone()), provider_id.clone(), amount.clone())
+	}: _(RawOrigin::Signed(staker.clone()), provider_id.clone(), amount)
 	verify {
 		assert_last_event::<T>(Event::<T>::Stake{staker, provider_id, amount}.into());
 	}
@@ -143,9 +145,9 @@ benchmarks! {
 		let _ = T::Currency::make_free_balance_be(&staker, BalanceOf::<T>::max_value());
 		let amount = BalanceOf::<T>::max_value() / 2u32.into();
 
-		DapiStaking::<T>::stake(RawOrigin::Signed(staker.clone()).into(), provider_id.clone(), amount.clone())?;
+		DapiStaking::<T>::stake(RawOrigin::Signed(staker.clone()).into(), provider_id.clone(), amount)?;
 
-	}: _(RawOrigin::Signed(staker.clone()), provider_id.clone(), amount.clone())
+	}: _(RawOrigin::Signed(staker.clone()), provider_id.clone(), amount)
 	verify {
 		assert_last_event::<T>(Event::<T>::Unstake{staker, provider_id, amount}.into());
 	}
@@ -161,11 +163,12 @@ benchmarks! {
 		let stake_amount = BalanceOf::<T>::max_value() / 2u32.into();
 		let unstake_amount = stake_amount / 2u32.into();
 
-		DapiStaking::<T>::stake(RawOrigin::Signed(staker.clone()).into(), provider_id.clone(), stake_amount.clone())?;
-		DapiStaking::<T>::unstake(RawOrigin::Signed(staker.clone()).into(), provider_id.clone(), unstake_amount.clone())?;
+		DapiStaking::<T>::stake(RawOrigin::Signed(staker.clone()).into(), provider_id.clone(), stake_amount)?;
+		DapiStaking::<T>::unstake(RawOrigin::Signed(staker.clone()).into(), provider_id.clone(), unstake_amount)?;
 
 		let current_era = DapiStaking::<T>::current_era();
 		advance_to_era::<T>(current_era + 1 + T::UnbondingPeriod::get());
+
 	}: _(RawOrigin::Signed(staker.clone()))
 	verify {
 		assert_last_event::<T>(Event::<T>::Withdrawn{staker, amount: unstake_amount}.into());
