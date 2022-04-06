@@ -56,6 +56,9 @@ pub mod pallet {
 		/// The identifier of Massbit provider/project.
 		type MassbitId: Parameter + Member + Default;
 
+		/// The number of blocks that need to pass until project's deposit can be withdraw.
+		type ProjectDepositPeriod: Get<Self::BlockNumber>;
+
 		/// Max number of deposit chunks per account Id <-> project Id pairing.
 		/// If value is zero, deposit becomes impossible.
 		#[pallet::constant]
@@ -67,16 +70,21 @@ pub mod pallet {
 
 	#[pallet::error]
 	pub enum Error<T> {
-		AlreadyRegistered,
-		ProjectDNE,
-		NotOwnedProject,
+		AlreadyExist,
+		/// Too many project's deposit chunks.
 		TooManyDepositChunks,
+		/// There are no deposit be withdrawal.
 		NothingToWithdraw,
-		ProviderDNE,
-		NotOwnedProvider,
+		/// The provider is inactive.
 		NotOperatedProvider,
-		InvalidChainId,
-		NotFisherman,
+		/// Chain Id is too long.
+		BadChainId,
+		/// The provider or project doesn't exist in the list.
+		NotExist,
+		/// You are not the owner of the provider or project.
+		NotOwner,
+		/// No permission to perform specific operation.
+		PermissionDenied,
 	}
 
 	#[pallet::event]
@@ -86,7 +94,7 @@ pub mod pallet {
 		ProjectRegistered {
 			project_id: T::MassbitId,
 			consumer: T::AccountId,
-			chain_id: ChainId<T>,
+			chain_id: Vec<u8>,
 			quota: u128,
 		},
 		/// A project is deposited more.
@@ -96,7 +104,7 @@ pub mod pallet {
 			provider_id: T::MassbitId,
 			provider_type: ProviderType,
 			operator: T::AccountId,
-			chain_id: ChainId<T>,
+			chain_id: Vec<u8>,
 		},
 		/// A provider is unregistered.
 		ProviderUnregistered { provider_id: T::MassbitId, provider_type: ProviderType },
@@ -112,10 +120,16 @@ pub mod pallet {
 			success_rate: u32,
 			average_latency: u32,
 		},
-		/// New chain id is created.
-		ChainIdCreated { chain_id: BoundedVec<u8, T::StringLimit> },
 		/// Account has withdrawn unbonded funds.
 		Withdrawn { account: T::AccountId, amount: BalanceOf<T> },
+		/// Chain Id is added to well known set.
+		ChainIdAdded { chain_id: Vec<u8> },
+		/// Chain id is removed from well known set.
+		ChainIdRemoved { chain_id: Vec<u8> },
+		/// Fisherman is added
+		FishermanAdded { account_id: T::AccountId },
+		/// Fisherman is removed
+		FishermanRemoved { account_id: T::AccountId },
 	}
 
 	#[pallet::storage]
@@ -172,18 +186,18 @@ pub mod pallet {
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
-			ensure!(!<Projects<T>>::contains_key(&project_id), Error::<T>::AlreadyRegistered);
+			ensure!(!<Projects<T>>::contains_key(&project_id), Error::<T>::AlreadyExist);
 
-			let chain_id: BoundedVec<u8, T::StringLimit> =
-				chain_id.try_into().map_err(|_| Error::<T>::InvalidChainId)?;
-			ensure!(Self::is_valid_chain_id(&chain_id), Error::<T>::InvalidChainId);
+			let bounded_chain_id: BoundedVec<u8, T::StringLimit> =
+				chain_id.clone().try_into().map_err(|_| Error::<T>::BadChainId)?;
+			ensure!(Self::chain_ids().contains(&bounded_chain_id), Error::<T>::BadChainId);
 
 			T::Currency::reserve(&account, deposit)?;
 
 			let quota = Self::calculate_quota(deposit);
 			let mut project = Project {
 				consumer: account.clone(),
-				chain_id: chain_id.clone(),
+				chain_id: bounded_chain_id,
 				quota,
 				usage: 0,
 				deposit_info: Default::default(),
@@ -201,7 +215,6 @@ pub mod pallet {
 				chain_id,
 				quota,
 			});
-
 			Ok(().into())
 		}
 
@@ -213,8 +226,9 @@ pub mod pallet {
 		) -> DispatchResultWithPostInfo {
 			let consumer = ensure_signed(origin)?;
 
-			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::ProjectDNE)?;
-			ensure!(project.consumer == consumer, Error::<T>::NotOwnedProject);
+			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::NotExist)?;
+			ensure!(project.consumer == consumer, Error::<T>::NotOwner);
+
 			ensure!(
 				project.deposit_info.len() <= T::MaxDepositChunks::get(),
 				Error::<T>::TooManyDepositChunks
@@ -226,13 +240,13 @@ pub mod pallet {
 			project.quota = quota;
 			project.deposit_info.add(Deposit {
 				amount: deposit,
-				unreserved_block_number: <frame_system::Pallet<T>>::block_number(),
+				unreserved_block_number: <frame_system::Pallet<T>>::block_number() +
+					T::ProjectDepositPeriod::get(),
 			});
 
 			<Projects<T>>::insert(&project_id, project);
 
 			Self::deposit_event(Event::ProjectDeposited { consumer, project_id, quota });
-
 			Ok(().into())
 		}
 
@@ -243,8 +257,8 @@ pub mod pallet {
 		) -> DispatchResultWithPostInfo {
 			let consumer = ensure_signed(origin)?;
 
-			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::ProjectDNE)?;
-			ensure!(project.consumer == consumer, Error::<T>::NotOwnedProject);
+			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::NotExist)?;
+			ensure!(project.consumer == consumer, Error::<T>::NotOwner);
 
 			let current_block = <frame_system::Pallet<T>>::block_number();
 			let (valid_chunks, future_chunks) = project.deposit_info.partition(current_block);
@@ -260,7 +274,6 @@ pub mod pallet {
 				account: consumer,
 				amount: withdraw_amount,
 			});
-
 			Ok(().into())
 		}
 
@@ -271,9 +284,9 @@ pub mod pallet {
 			usage: u128,
 		) -> DispatchResultWithPostInfo {
 			let account_id = ensure_signed(origin)?;
-			ensure!(Self::is_fisherman(&account_id), Error::<T>::NotFisherman);
+			ensure!(Self::fishermen().contains(&account_id), Error::<T>::PermissionDenied);
 
-			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::ProjectDNE)?;
+			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::NotExist)?;
 			project.usage = project.usage.saturating_add(usage).min(project.quota);
 			if project.usage == project.quota {
 				Self::deposit_event(Event::ProjectReachedQuota { project_id: project_id.clone() });
@@ -289,7 +302,7 @@ pub mod pallet {
 			Ok(().into())
 		}
 
-		#[pallet::weight(100)]
+		#[pallet::weight(T::WeightInfo::register_provider())]
 		pub fn register_provider(
 			origin: OriginFor<T>,
 			provider_id: T::MassbitId,
@@ -299,11 +312,11 @@ pub mod pallet {
 		) -> DispatchResultWithPostInfo {
 			let operator = ensure_signed(origin)?;
 
-			ensure!(!<Providers<T>>::contains_key(&provider_id), Error::<T>::ProviderDNE);
+			ensure!(!<Providers<T>>::contains_key(&provider_id), Error::<T>::AlreadyExist);
 
-			let chain_id: BoundedVec<u8, T::StringLimit> =
-				chain_id.try_into().map_err(|_| Error::<T>::InvalidChainId)?;
-			ensure!(Self::is_valid_chain_id(&chain_id), Error::<T>::InvalidChainId);
+			let bounded_chain_id: BoundedVec<u8, T::StringLimit> =
+				chain_id.clone().try_into().map_err(|_| Error::<T>::BadChainId)?;
+			ensure!(Self::chain_ids().contains(&bounded_chain_id), Error::<T>::BadChainId);
 
 			T::StakingInterface::register(operator.clone(), provider_id.clone(), deposit)?;
 
@@ -312,7 +325,7 @@ pub mod pallet {
 				Provider {
 					provider_type,
 					operator: operator.clone(),
-					chain_id: chain_id.clone(),
+					chain_id: bounded_chain_id,
 					state: ProviderState::Registered,
 				},
 			);
@@ -323,19 +336,18 @@ pub mod pallet {
 				operator,
 				chain_id,
 			});
-
 			Ok(().into())
 		}
 
-		#[pallet::weight(100)]
+		#[pallet::weight(T::WeightInfo::unregister_provider())]
 		pub fn unregister_provider(
 			origin: OriginFor<T>,
 			provider_id: T::MassbitId,
 		) -> DispatchResultWithPostInfo {
 			let account = ensure_signed(origin)?;
 
-			let mut provider = Providers::<T>::get(&provider_id).ok_or(Error::<T>::ProviderDNE)?;
-			ensure!(provider.operator == account, Error::<T>::NotOwnedProvider);
+			let mut provider = Providers::<T>::get(&provider_id).ok_or(Error::<T>::NotExist)?;
+			ensure!(provider.operator == account, Error::<T>::NotOwner);
 
 			ensure!(provider.state == ProviderState::Registered, Error::<T>::NotOperatedProvider);
 
@@ -348,7 +360,6 @@ pub mod pallet {
 				provider_id,
 				provider_type: provider.provider_type,
 			});
-
 			Ok(().into())
 		}
 
@@ -361,9 +372,9 @@ pub mod pallet {
 			average_latency: u32,
 		) -> DispatchResultWithPostInfo {
 			let account_id = ensure_signed(origin)?;
-			ensure!(Self::is_fisherman(&account_id), Error::<T>::NotFisherman);
+			ensure!(Self::fishermen().contains(&account_id), Error::<T>::PermissionDenied);
 
-			let mut provider = Self::providers(&provider_id).ok_or(Error::<T>::ProviderDNE)?;
+			let mut provider = Self::providers(&provider_id).ok_or(Error::<T>::NotExist)?;
 			ensure!(provider.state == ProviderState::Registered, Error::<T>::NotOperatedProvider);
 
 			T::StakingInterface::unregister(provider_id.clone())?;
@@ -378,25 +389,77 @@ pub mod pallet {
 				success_rate,
 				average_latency,
 			});
-
 			Ok(().into())
 		}
 
-		#[pallet::weight(100)]
-		pub fn create_chain_id(
+		#[pallet::weight(T::WeightInfo::add_chain_id())]
+		pub fn add_chain_id(origin: OriginFor<T>, chain_id: Vec<u8>) -> DispatchResultWithPostInfo {
+			let _ = ensure_root(origin);
+
+			let bounded_chain_id: BoundedVec<u8, T::StringLimit> =
+				chain_id.clone().try_into().map_err(|_| Error::<T>::BadChainId)?;
+
+			let mut chain_ids = ChainIds::<T>::get();
+			ensure!(!chain_ids.contains(&bounded_chain_id), Error::<T>::AlreadyExist);
+
+			chain_ids.insert(bounded_chain_id);
+			ChainIds::<T>::put(&chain_ids);
+
+			Self::deposit_event(Event::ChainIdAdded { chain_id });
+			Ok(().into())
+		}
+
+		#[pallet::weight(T::WeightInfo::remove_chain_id())]
+		pub fn remove_chain_id(
 			origin: OriginFor<T>,
 			chain_id: Vec<u8>,
 		) -> DispatchResultWithPostInfo {
 			let _ = ensure_root(origin);
 
-			let chain_id: BoundedVec<u8, T::StringLimit> =
-				chain_id.try_into().map_err(|_| Error::<T>::InvalidChainId)?;
-			ensure!(!Self::is_valid_chain_id(&chain_id), Error::<T>::AlreadyRegistered);
+			let bounded_chain_id: BoundedVec<u8, T::StringLimit> =
+				chain_id.clone().try_into().map_err(|_| Error::<T>::BadChainId)?;
 
-			ChainIds::<T>::mutate(|chain_ids| chain_ids.insert(chain_id.clone()));
+			let mut chain_ids = ChainIds::<T>::get();
+			ensure!(chain_ids.contains(&bounded_chain_id), Error::<T>::NotExist);
 
-			Self::deposit_event(Event::ChainIdCreated { chain_id });
+			chain_ids.remove(&bounded_chain_id);
+			ChainIds::<T>::put(&chain_ids);
 
+			Self::deposit_event(Event::ChainIdRemoved { chain_id });
+			Ok(().into())
+		}
+
+		#[pallet::weight(T::WeightInfo::add_fisherman())]
+		pub fn add_fisherman(
+			origin: OriginFor<T>,
+			account_id: T::AccountId,
+		) -> DispatchResultWithPostInfo {
+			let _ = ensure_root(origin);
+
+			let mut fishermen = Fishermen::<T>::get();
+			ensure!(!fishermen.contains(&account_id), Error::<T>::AlreadyExist);
+
+			fishermen.insert(account_id.clone());
+			Fishermen::<T>::put(&fishermen);
+
+			Self::deposit_event(Event::FishermanAdded { account_id });
+			Ok(().into())
+		}
+
+		#[pallet::weight(T::WeightInfo::remove_fisherman())]
+		pub fn remove_fisherman(
+			origin: OriginFor<T>,
+			account_id: T::AccountId,
+		) -> DispatchResultWithPostInfo {
+			let _ = ensure_root(origin);
+
+			let mut fishermen = Fishermen::<T>::get();
+			ensure!(fishermen.contains(&account_id), Error::<T>::NotExist);
+
+			fishermen.remove(&account_id);
+			Fishermen::<T>::put(&fishermen);
+
+			Self::deposit_event(Event::FishermanRemoved { account_id });
 			Ok(().into())
 		}
 	}
@@ -407,14 +470,6 @@ pub mod pallet {
 				.ok()
 				.unwrap_or_default()
 				.div(1_000_000_000_000_000u128)
-		}
-
-		fn is_valid_chain_id(chain_id: &ChainId<T>) -> bool {
-			Self::chain_ids().iter().any(|id| id == chain_id)
-		}
-
-		fn is_fisherman(account_id: &T::AccountId) -> bool {
-			Self::fishermen().iter().any(|id| id == account_id)
 		}
 
 		fn initialize_fishermen(fishermen: &Vec<T::AccountId>) {

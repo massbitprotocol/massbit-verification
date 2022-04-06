@@ -162,6 +162,10 @@ impl Default for MockProvider {
 	}
 }
 
+parameter_types! {
+	pub const ProjectDepositPeriod: BlockNumber = 10;
+}
+
 impl pallet_dapi::Config for TestRuntime {
 	type Event = Event;
 	type Currency = Balances;
@@ -171,6 +175,7 @@ impl pallet_dapi::Config for TestRuntime {
 	type MassbitId = MockProvider;
 	type WeightInfo = weights::SubstrateWeight<TestRuntime>;
 	type MaxDepositChunks = ConstU32<10>;
+	type ProjectDepositPeriod = ProjectDepositPeriod;
 }
 
 pub struct ExternalityBuilder;
