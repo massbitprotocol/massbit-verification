@@ -300,6 +300,7 @@ impl pallet_dapi_staking::Config for Runtime {
 parameter_types! {
 	pub const MaxBytesInChainId: u32 = 64;
 	pub const MaxDepositChunks: u32 = 5;
+	pub const ProjectDepositPeriod: BlockNumber = 10;
 }
 
 impl pallet_dapi::Config for Runtime {
@@ -309,6 +310,7 @@ impl pallet_dapi::Config for Runtime {
 	type AddFishermanOrigin = EnsureRoot<AccountId>;
 	type StringLimit = MaxBytesInChainId;
 	type MassbitId = MassbitId;
+	type ProjectDepositPeriod = ProjectDepositPeriod;
 	type MaxDepositChunks = MaxDepositChunks;
 	type WeightInfo = pallet_dapi::weights::SubstrateWeight<Runtime>;
 }
