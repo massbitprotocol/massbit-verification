@@ -311,8 +311,8 @@ parameter_types! {
 impl pallet_dapi::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
-	type StakingInterface = DapiStaking;
-	type AddFishermanOrigin = EnsureRoot<AccountId>;
+	type Staking = DapiStaking;
+	type AddRegulatorOrigin = EnsureRoot<AccountId>;
 	type ChainIdMaxLength = MaxBytesInChainId;
 	type MassbitId = MassbitId;
 	type OnProjectPayment = OnProjectPayment;

@@ -3,9 +3,7 @@
 pub mod types;
 pub mod weights;
 
-use frame_support::traits::{
-	Currency, ExistenceRequirement, OnUnbalanced, ReservableCurrency, WithdrawReasons,
-};
+use frame_support::traits::{Currency, ExistenceRequirement, OnUnbalanced, WithdrawReasons};
 use sp_runtime::traits::Scale;
 use sp_std::{collections::btree_set::BTreeSet, prelude::*};
 
@@ -45,13 +43,13 @@ pub mod pallet {
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
 		/// The currency mechanism
-		type Currency: ReservableCurrency<Self::AccountId>;
+		type Currency: Currency<Self::AccountId>;
 
 		/// Interface of dapi staking pallet.
-		type StakingInterface: Staking<Self::AccountId, Self::MassbitId, BalanceOf<Self>>;
+		type Staking: Staking<Self::AccountId, Self::MassbitId, BalanceOf<Self>>;
 
-		/// The origin which can add fisherman.
-		type AddFishermanOrigin: EnsureOrigin<Self::Origin>;
+		/// The origin which can add regulator.
+		type AddRegulatorOrigin: EnsureOrigin<Self::Origin>;
 
 		/// For constraining the maximum length of a chain id.
 		type ChainIdMaxLength: Get<u32>;
@@ -82,20 +80,22 @@ pub mod pallet {
 		NotOwner,
 		/// No permission to perform specific operation.
 		PermissionDenied,
+		/// Provider invalid state.
+		InvalidState,
 	}
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		/// A project is registered.
+		/// A new project is registered.
 		ProjectRegistered {
 			project_id: T::MassbitId,
 			consumer: T::AccountId,
 			chain_id: Vec<u8>,
 			quota: u128,
 		},
-		/// A project is deposited more.
-		ProjectDeposited { project_id: T::MassbitId, consumer: T::AccountId, quota: u128 },
+		/// Project is deposited.
+		ProjectDeposited { project_id: T::MassbitId, quota: u128 },
 		/// A provider is registered.
 		ProviderRegistered {
 			provider_id: T::MassbitId,
@@ -103,30 +103,24 @@ pub mod pallet {
 			operator: T::AccountId,
 			chain_id: Vec<u8>,
 		},
-		/// A provider is unregistered.
-		ProviderUnregistered { provider_id: T::MassbitId, provider_type: ProviderType },
-		/// Project usage is reported.
-		ProjectUsageReported { provider_id: T::MassbitId, usage: u128 },
-		/// Project reached max quota.
-		ProjectReachedQuota { project_id: T::MassbitId },
-		/// Provider performance is reported.
-		ProviderPerformanceReported {
+		/// Provider is activated.
+		ProviderActivated { provider_id: T::MassbitId, provider_type: ProviderType },
+		/// A provider is deactivated.
+		ProviderDeactivated {
 			provider_id: T::MassbitId,
 			provider_type: ProviderType,
-			requests: u64,
-			success_rate: u32,
-			average_latency: u32,
+			reason: ProviderDeactivateReason,
 		},
-		/// Account has withdrawn unbonded funds.
-		Withdrawn { account: T::AccountId, amount: BalanceOf<T> },
+		/// Project reached max quota.
+		ProjectReachedQuota { project_id: T::MassbitId },
 		/// Chain Id is added to well known set.
 		ChainIdAdded { chain_id: Vec<u8> },
 		/// Chain id is removed from well known set.
 		ChainIdRemoved { chain_id: Vec<u8> },
-		/// Fisherman is added
-		FishermanAdded { account_id: T::AccountId },
-		/// Fisherman is removed
-		FishermanRemoved { account_id: T::AccountId },
+		/// Regulator is added.
+		RegulatorAdded { account_id: T::AccountId },
+		/// Regulator is removed.
+		RegulatorRemoved { account_id: T::AccountId },
 	}
 
 	#[pallet::storage]
@@ -140,8 +134,8 @@ pub mod pallet {
 		StorageMap<_, Blake2_128Concat, T::MassbitId, Provider<AccountIdOf<T>, ChainId<T>>>;
 
 	#[pallet::storage]
-	#[pallet::getter(fn fishermen)]
-	pub type Fishermen<T: Config> = StorageValue<_, BTreeSet<T::AccountId>, ValueQuery>;
+	#[pallet::getter(fn regulators)]
+	pub type Regulators<T: Config> = StorageValue<_, BTreeSet<T::AccountId>, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn chain_ids)]
@@ -149,20 +143,20 @@ pub mod pallet {
 
 	#[pallet::genesis_config]
 	pub struct GenesisConfig<T: Config> {
-		pub fishermen: Vec<T::AccountId>,
+		pub regulators: Vec<T::AccountId>,
 	}
 
 	#[cfg(feature = "std")]
 	impl<T: Config> Default for GenesisConfig<T> {
 		fn default() -> Self {
-			Self { fishermen: Vec::new() }
+			Self { regulators: Vec::new() }
 		}
 	}
 
 	#[pallet::genesis_build]
 	impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
 		fn build(&self) {
-			Pallet::<T>::initialize_fishermen(&self.fishermen);
+			Pallet::<T>::initialize_regulators(&self.regulators);
 		}
 	}
 
@@ -181,7 +175,7 @@ pub mod pallet {
 
 			let bounded_chain_id: BoundedVec<u8, T::ChainIdMaxLength> =
 				chain_id.clone().try_into().map_err(|_| Error::<T>::BadChainId)?;
-			ensure!(Self::chain_ids().contains(&bounded_chain_id), Error::<T>::BadChainId);
+			ensure!(Self::chain_ids().contains(&bounded_chain_id), Error::<T>::NotExist);
 
 			let payment = T::Currency::withdraw(
 				&consumer,
@@ -210,7 +204,6 @@ pub mod pallet {
 			let consumer = ensure_signed(origin)?;
 
 			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::NotExist)?;
-			ensure!(project.consumer == consumer, Error::<T>::NotOwner);
 
 			let payment = T::Currency::withdraw(
 				&consumer,
@@ -225,7 +218,7 @@ pub mod pallet {
 
 			<Projects<T>>::insert(&project_id, project);
 
-			Self::deposit_event(Event::ProjectDeposited { consumer, project_id, quota });
+			Self::deposit_event(Event::ProjectDeposited { project_id, quota });
 			Ok(().into())
 		}
 
@@ -235,42 +228,36 @@ pub mod pallet {
 			project_id: T::MassbitId,
 			usage: u128,
 		) -> DispatchResultWithPostInfo {
-			let account_id = ensure_signed(origin)?;
-			ensure!(Self::fishermen().contains(&account_id), Error::<T>::PermissionDenied);
+			let regulator = ensure_signed(origin)?;
+			ensure!(Self::regulators().contains(&regulator), Error::<T>::PermissionDenied);
 
 			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::NotExist)?;
 			project.usage = project.usage.saturating_add(usage).min(project.quota);
 			if project.usage == project.quota {
 				Self::deposit_event(Event::ProjectReachedQuota { project_id: project_id.clone() });
-			} else {
-				Self::deposit_event(Event::ProjectUsageReported {
-					provider_id: project_id.clone(),
-					usage,
-				});
-			}
+			};
 
 			Projects::<T>::insert(&project_id, project);
 
 			Ok(().into())
 		}
 
-		#[pallet::weight(T::WeightInfo::register_provider())]
+		#[pallet::weight(100)]
 		pub fn register_provider(
 			origin: OriginFor<T>,
 			provider_id: T::MassbitId,
+			operator: T::AccountId,
 			provider_type: ProviderType,
 			chain_id: Vec<u8>,
-			#[pallet::compact] deposit: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
-			let operator = ensure_signed(origin)?;
+			let regulator = ensure_signed(origin)?;
+			ensure!(Self::regulators().contains(&regulator), Error::<T>::PermissionDenied);
 
 			ensure!(!<Providers<T>>::contains_key(&provider_id), Error::<T>::AlreadyExist);
 
 			let bounded_chain_id: BoundedVec<u8, T::ChainIdMaxLength> =
 				chain_id.clone().try_into().map_err(|_| Error::<T>::BadChainId)?;
-			ensure!(Self::chain_ids().contains(&bounded_chain_id), Error::<T>::BadChainId);
-
-			T::StakingInterface::register(operator.clone(), provider_id.clone(), deposit)?;
+			ensure!(Self::chain_ids().contains(&bounded_chain_id), Error::<T>::NotExist);
 
 			<Providers<T>>::insert(
 				&provider_id,
@@ -278,7 +265,7 @@ pub mod pallet {
 					provider_type,
 					operator: operator.clone(),
 					chain_id: bounded_chain_id,
-					state: ProviderState::Registered,
+					state: ProviderState::Active,
 				},
 			);
 
@@ -287,6 +274,30 @@ pub mod pallet {
 				provider_type,
 				operator,
 				chain_id,
+			});
+			Ok(().into())
+		}
+
+		#[pallet::weight(100)]
+		pub fn deposit_provider(
+			origin: OriginFor<T>,
+			provider_id: T::MassbitId,
+			#[pallet::compact] deposit: BalanceOf<T>,
+		) -> DispatchResultWithPostInfo {
+			let operator = ensure_signed(origin)?;
+
+			let mut provider = Providers::<T>::get(&provider_id).ok_or(Error::<T>::NotExist)?;
+			ensure!(provider.operator == operator, Error::<T>::NotOwner);
+			ensure!(provider.state == ProviderState::Active, Error::<T>::InvalidState);
+
+			T::Staking::register(operator.clone(), provider_id.clone(), deposit)?;
+
+			provider.state = ProviderState::Active;
+			Providers::<T>::insert(&provider_id, provider.clone());
+
+			Self::deposit_event(Event::ProviderActivated {
+				provider_id,
+				provider_type: provider.provider_type,
 			});
 			Ok(().into())
 		}
@@ -300,46 +311,42 @@ pub mod pallet {
 
 			let mut provider = Providers::<T>::get(&provider_id).ok_or(Error::<T>::NotExist)?;
 			ensure!(provider.operator == account, Error::<T>::NotOwner);
+			ensure!(provider.state == ProviderState::Active, Error::<T>::NotOperatedProvider);
 
-			ensure!(provider.state == ProviderState::Registered, Error::<T>::NotOperatedProvider);
+			T::Staking::unregister(provider_id.clone())?;
 
-			T::StakingInterface::unregister(provider_id.clone())?;
-
-			provider.state = ProviderState::Unregistered;
+			provider.state = ProviderState::InActive;
 			Providers::<T>::insert(&provider_id, provider.clone());
 
-			Self::deposit_event(Event::<T>::ProviderUnregistered {
+			Self::deposit_event(Event::<T>::ProviderDeactivated {
 				provider_id,
 				provider_type: provider.provider_type,
+				reason: ProviderDeactivateReason::UnRegistered,
 			});
 			Ok(().into())
 		}
 
 		#[pallet::weight(100)]
-		pub fn submit_provider_report(
+		pub fn deactivate_provider(
 			origin: OriginFor<T>,
 			provider_id: T::MassbitId,
-			requests: u64,
-			success_rate: u32,
-			average_latency: u32,
+			reason: ProviderDeactivateReason,
 		) -> DispatchResultWithPostInfo {
-			let account_id = ensure_signed(origin)?;
-			ensure!(Self::fishermen().contains(&account_id), Error::<T>::PermissionDenied);
+			let regulator = ensure_signed(origin)?;
+			ensure!(Self::regulators().contains(&regulator), Error::<T>::PermissionDenied);
 
 			let mut provider = Self::providers(&provider_id).ok_or(Error::<T>::NotExist)?;
-			ensure!(provider.state == ProviderState::Registered, Error::<T>::NotOperatedProvider);
+			ensure!(provider.state == ProviderState::Active, Error::<T>::NotOperatedProvider);
 
-			T::StakingInterface::unregister(provider_id.clone())?;
+			T::Staking::unregister(provider_id.clone())?;
 
-			provider.state = ProviderState::Unregistered;
+			provider.state = ProviderState::InActive;
 			Providers::<T>::insert(&provider_id, provider.clone());
 
-			Self::deposit_event(Event::ProviderPerformanceReported {
+			Self::deposit_event(Event::<T>::ProviderDeactivated {
 				provider_id,
 				provider_type: provider.provider_type,
-				requests,
-				success_rate,
-				average_latency,
+				reason,
 			});
 			Ok(().into())
 		}
@@ -381,37 +388,37 @@ pub mod pallet {
 			Ok(().into())
 		}
 
-		#[pallet::weight(T::WeightInfo::add_fisherman())]
-		pub fn add_fisherman(
+		#[pallet::weight(T::WeightInfo::add_regulator())]
+		pub fn add_regulator(
 			origin: OriginFor<T>,
 			account_id: T::AccountId,
 		) -> DispatchResultWithPostInfo {
 			let _ = ensure_root(origin);
 
-			let mut fishermen = Fishermen::<T>::get();
-			ensure!(!fishermen.contains(&account_id), Error::<T>::AlreadyExist);
+			let mut regulators = Regulators::<T>::get();
+			ensure!(!regulators.contains(&account_id), Error::<T>::AlreadyExist);
 
-			fishermen.insert(account_id.clone());
-			Fishermen::<T>::put(&fishermen);
+			regulators.insert(account_id.clone());
+			Regulators::<T>::put(&regulators);
 
-			Self::deposit_event(Event::FishermanAdded { account_id });
+			Self::deposit_event(Event::RegulatorAdded { account_id });
 			Ok(().into())
 		}
 
-		#[pallet::weight(T::WeightInfo::remove_fisherman())]
-		pub fn remove_fisherman(
+		#[pallet::weight(T::WeightInfo::remove_regulator())]
+		pub fn remove_regulator(
 			origin: OriginFor<T>,
 			account_id: T::AccountId,
 		) -> DispatchResultWithPostInfo {
 			let _ = ensure_root(origin);
 
-			let mut fishermen = Fishermen::<T>::get();
-			ensure!(fishermen.contains(&account_id), Error::<T>::NotExist);
+			let mut regulators = Regulators::<T>::get();
+			ensure!(regulators.contains(&account_id), Error::<T>::NotExist);
 
-			fishermen.remove(&account_id);
-			Fishermen::<T>::put(&fishermen);
+			regulators.remove(&account_id);
+			Regulators::<T>::put(&regulators);
 
-			Self::deposit_event(Event::FishermanRemoved { account_id });
+			Self::deposit_event(Event::RegulatorRemoved { account_id });
 			Ok(().into())
 		}
 	}
@@ -424,12 +431,10 @@ pub mod pallet {
 				.div(1_000_000_000_000_000u128)
 		}
 
-		fn initialize_fishermen(fishermen: &Vec<T::AccountId>) {
-			let fishermen_ids = fishermen
-				.iter()
-				.map(|fisherman| fisherman.clone())
-				.collect::<BTreeSet<T::AccountId>>();
-			Fishermen::<T>::put(&fishermen_ids);
+		fn initialize_regulators(regulators: &Vec<T::AccountId>) {
+			let account_ids =
+				regulators.iter().map(|r| r.clone()).collect::<BTreeSet<T::AccountId>>();
+			Regulators::<T>::put(&account_ids);
 		}
 	}
 }
