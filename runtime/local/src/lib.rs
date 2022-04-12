@@ -258,7 +258,7 @@ impl OnUnbalanced<NegativeImbalance> for OnBlockReward {
 }
 
 parameter_types! {
-	pub const RewardAmount: Balance = 200_000 * MILLIMBT;
+	pub const RewardAmount: Balance = 100_000 * MILLIMBT;
 }
 
 impl pallet_block_reward::Config for Runtime {
@@ -269,7 +269,7 @@ impl pallet_block_reward::Config for Runtime {
 
 parameter_types! {
 	pub const DapiStakingPalletId: PalletId = PalletId(*b"pi/dapst");
-	pub const BlockPerEra: BlockNumber = 20;
+	pub const BlockPerEra: BlockNumber = 200;
 	pub const RegisterDeposit: Balance = 90 * MBT;
 	pub const OperatorRewardPercentage: Perbill = Perbill::from_percent(80);
 	pub const MaxNumberOfStakersPerProvider: u32 = 512;
@@ -297,10 +297,15 @@ impl pallet_dapi_staking::Config for Runtime {
 	type WeightInfo = pallet_dapi_staking::weights::SubstrateWeight<Runtime>;
 }
 
+pub struct OnProjectPayment;
+impl OnUnbalanced<NegativeImbalance> for OnProjectPayment {
+	fn on_nonzero_unbalanced(amount: NegativeImbalance) {
+		DapiStaking::on_unbalanced(amount);
+	}
+}
+
 parameter_types! {
 	pub const MaxBytesInChainId: u32 = 64;
-	pub const MaxDepositChunks: u32 = 5;
-	pub const ProjectDepositPeriod: BlockNumber = 10;
 }
 
 impl pallet_dapi::Config for Runtime {
@@ -308,10 +313,9 @@ impl pallet_dapi::Config for Runtime {
 	type Currency = Balances;
 	type StakingInterface = DapiStaking;
 	type AddFishermanOrigin = EnsureRoot<AccountId>;
-	type StringLimit = MaxBytesInChainId;
+	type ChainIdMaxLength = MaxBytesInChainId;
 	type MassbitId = MassbitId;
-	type ProjectDepositPeriod = ProjectDepositPeriod;
-	type MaxDepositChunks = MaxDepositChunks;
+	type OnProjectPayment = OnProjectPayment;
 	type WeightInfo = pallet_dapi::weights::SubstrateWeight<Runtime>;
 }
 

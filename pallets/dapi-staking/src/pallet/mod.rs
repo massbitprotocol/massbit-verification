@@ -32,9 +32,9 @@ pub mod pallet {
 	>>::NegativeImbalance;
 
 	impl<T: Config> OnUnbalanced<NegativeImbalanceOf<T>> for Pallet<T> {
-		fn on_nonzero_unbalanced(block_reward: NegativeImbalanceOf<T>) {
-			let operators_part = T::OperatorRewardPercentage::get() * block_reward.peek();
-			let stakers_part = block_reward.peek().saturating_sub(operators_part);
+		fn on_nonzero_unbalanced(imbalance: NegativeImbalanceOf<T>) {
+			let operators_part = T::OperatorRewardPercentage::get() * imbalance.peek();
+			let stakers_part = imbalance.peek().saturating_sub(operators_part);
 
 			BlockRewardAccumulator::<T>::mutate(|accumulated_reward| {
 				accumulated_reward.operators =
@@ -43,7 +43,7 @@ pub mod pallet {
 					accumulated_reward.stakers.saturating_add(stakers_part);
 			});
 
-			T::Currency::resolve_creating(&Self::account_id(), block_reward);
+			T::Currency::resolve_creating(&Self::account_id(), imbalance);
 		}
 	}
 

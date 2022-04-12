@@ -171,11 +171,10 @@ impl pallet_dapi::Config for TestRuntime {
 	type Currency = Balances;
 	type StakingInterface = DapiStaking;
 	type AddFishermanOrigin = EnsureRoot<AccountId>;
-	type StringLimit = ConstU32<64>;
+	type ChainIdMaxLength = ConstU32<64>;
 	type MassbitId = MockProvider;
+	type OnProjectPayment = ();
 	type WeightInfo = weights::SubstrateWeight<TestRuntime>;
-	type MaxDepositChunks = ConstU32<10>;
-	type ProjectDepositPeriod = ProjectDepositPeriod;
 }
 
 pub struct ExternalityBuilder;
