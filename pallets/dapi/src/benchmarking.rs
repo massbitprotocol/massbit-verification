@@ -53,25 +53,6 @@ benchmarks! {
 
 	}: _(RawOrigin::Signed(consumer.clone()), project_id.clone(), amount.clone())
 
-	withdraw_project_deposit {
-		initialize::<T>();
-
-		let consumer: T::AccountId = account("consumer", 10000, SEED);
-		T::Currency::make_free_balance_be(&consumer, BalanceOf::<T>::max_value());
-
-		let project_id = T::MassbitId::default();
-		let amount = BalanceOf::<T>::max_value() / 2u32.into();
-
-		let chain_id = "eth.mainnet".into();
-		Dapi::<T>::register_project(RawOrigin::Signed(consumer.clone()).into(), project_id.clone(), chain_id, amount.clone())?;
-
-		System::<T>::set_block_number(System::<T>::block_number() + T::ProjectDepositPeriod::get());
-
-	}: _(RawOrigin::Signed(consumer.clone()), project_id.clone())
-	verify {
-		assert_last_event::<T>(Event::<T>::Withdrawn{account: consumer, amount}.into());
-	}
-
 	register_provider {
 		initialize::<T>();
 

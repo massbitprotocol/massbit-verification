@@ -3,8 +3,10 @@
 pub mod types;
 pub mod weights;
 
-use frame_support::traits::{Currency, ReservableCurrency};
-use sp_runtime::traits::{Scale, Zero};
+use frame_support::traits::{
+	Currency, ExistenceRequirement, OnUnbalanced, ReservableCurrency, WithdrawReasons,
+};
+use sp_runtime::traits::Scale;
 use sp_std::{collections::btree_set::BTreeSet, prelude::*};
 
 use pallet_dapi_staking::Staking;
@@ -28,8 +30,9 @@ pub mod pallet {
 	use frame_system::pallet_prelude::*;
 
 	type AccountIdOf<T> = <T as frame_system::Config>::AccountId;
+
 	/// Blockchain identifier, e.g `eth.mainnet`
-	type ChainId<T> = BoundedVec<u8, <T as Config>::StringLimit>;
+	type ChainId<T> = BoundedVec<u8, <T as Config>::ChainIdMaxLength>;
 
 	#[pallet::pallet]
 	#[pallet::generate_store(pub(super) trait Store)]
@@ -47,22 +50,19 @@ pub mod pallet {
 		/// Interface of dapi staking pallet.
 		type StakingInterface: Staking<Self::AccountId, Self::MassbitId, BalanceOf<Self>>;
 
-		/// The origin which can add an fisherman.
+		/// The origin which can add fisherman.
 		type AddFishermanOrigin: EnsureOrigin<Self::Origin>;
 
 		/// For constraining the maximum length of a chain id.
-		type StringLimit: Get<u32>;
+		type ChainIdMaxLength: Get<u32>;
 
 		/// The identifier of Massbit provider/project.
 		type MassbitId: Parameter + Member + Default;
 
-		/// The number of blocks that need to pass until project's deposit can be withdraw.
-		type ProjectDepositPeriod: Get<Self::BlockNumber>;
-
-		/// Max number of deposit chunks per account Id <-> project Id pairing.
-		/// If value is zero, deposit becomes impossible.
-		#[pallet::constant]
-		type MaxDepositChunks: Get<u32>;
+		/// Handle project payment as imbalance.
+		type OnProjectPayment: OnUnbalanced<
+			<Self::Currency as Currency<Self::AccountId>>::NegativeImbalance,
+		>;
 
 		/// Weight information for extrinsics in this pallet.
 		type WeightInfo: WeightInfo;
@@ -70,11 +70,8 @@ pub mod pallet {
 
 	#[pallet::error]
 	pub enum Error<T> {
+		/// Entity is already registered.
 		AlreadyExist,
-		/// Too many project's deposit chunks.
-		TooManyDepositChunks,
-		/// There are no deposit be withdrawal.
-		NothingToWithdraw,
 		/// The provider is inactive.
 		NotOperatedProvider,
 		/// Chain Id is too long.
@@ -134,24 +131,18 @@ pub mod pallet {
 
 	#[pallet::storage]
 	#[pallet::getter(fn projects)]
-	pub(super) type Projects<T: Config> = StorageMap<
-		_,
-		Blake2_128Concat,
-		T::MassbitId,
-		Project<AccountIdOf<T>, ChainId<T>, BalanceOf<T>, T::BlockNumber>,
-	>;
+	pub(super) type Projects<T: Config> =
+		StorageMap<_, Blake2_128Concat, T::MassbitId, Project<AccountIdOf<T>, ChainId<T>>>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn providers)]
 	pub(super) type Providers<T: Config> =
 		StorageMap<_, Blake2_128Concat, T::MassbitId, Provider<AccountIdOf<T>, ChainId<T>>>;
 
-	/// The set of fishermen.
 	#[pallet::storage]
 	#[pallet::getter(fn fishermen)]
 	pub type Fishermen<T: Config> = StorageValue<_, BTreeSet<T::AccountId>, ValueQuery>;
 
-	/// The set of blockchain id.
 	#[pallet::storage]
 	#[pallet::getter(fn chain_ids)]
 	pub type ChainIds<T: Config> = StorageValue<_, BTreeSet<ChainId<T>>, ValueQuery>;
@@ -184,37 +175,29 @@ pub mod pallet {
 			chain_id: Vec<u8>,
 			#[pallet::compact] deposit: BalanceOf<T>,
 		) -> DispatchResultWithPostInfo {
-			let account = ensure_signed(origin)?;
+			let consumer = ensure_signed(origin)?;
 
 			ensure!(!<Projects<T>>::contains_key(&project_id), Error::<T>::AlreadyExist);
 
-			let bounded_chain_id: BoundedVec<u8, T::StringLimit> =
+			let bounded_chain_id: BoundedVec<u8, T::ChainIdMaxLength> =
 				chain_id.clone().try_into().map_err(|_| Error::<T>::BadChainId)?;
 			ensure!(Self::chain_ids().contains(&bounded_chain_id), Error::<T>::BadChainId);
 
-			T::Currency::reserve(&account, deposit)?;
+			let payment = T::Currency::withdraw(
+				&consumer,
+				deposit,
+				WithdrawReasons::TRANSFER,
+				ExistenceRequirement::KeepAlive,
+			)?;
+			T::OnProjectPayment::on_unbalanced(payment);
 
 			let quota = Self::calculate_quota(deposit);
-			let mut project = Project {
-				consumer: account.clone(),
-				chain_id: bounded_chain_id,
-				quota,
-				usage: 0,
-				deposit_info: Default::default(),
-			};
-			project.deposit_info.add(Deposit {
-				amount: deposit,
-				unreserved_block_number: <frame_system::Pallet<T>>::block_number(),
-			});
+			let project =
+				Project { consumer: consumer.clone(), chain_id: bounded_chain_id, quota, usage: 0 };
 
 			<Projects<T>>::insert(&project_id, project);
 
-			Self::deposit_event(Event::ProjectRegistered {
-				project_id,
-				consumer: account,
-				chain_id,
-				quota,
-			});
+			Self::deposit_event(Event::ProjectRegistered { project_id, consumer, chain_id, quota });
 			Ok(().into())
 		}
 
@@ -229,51 +212,20 @@ pub mod pallet {
 			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::NotExist)?;
 			ensure!(project.consumer == consumer, Error::<T>::NotOwner);
 
-			ensure!(
-				project.deposit_info.len() <= T::MaxDepositChunks::get(),
-				Error::<T>::TooManyDepositChunks
-			);
-
-			T::Currency::reserve(&consumer, deposit)?;
+			let payment = T::Currency::withdraw(
+				&consumer,
+				deposit,
+				WithdrawReasons::TRANSFER,
+				ExistenceRequirement::KeepAlive,
+			)?;
+			T::OnProjectPayment::on_unbalanced(payment);
 
 			let quota = project.quota.saturating_add(Self::calculate_quota(deposit));
 			project.quota = quota;
-			project.deposit_info.add(Deposit {
-				amount: deposit,
-				unreserved_block_number: <frame_system::Pallet<T>>::block_number() +
-					T::ProjectDepositPeriod::get(),
-			});
 
 			<Projects<T>>::insert(&project_id, project);
 
 			Self::deposit_event(Event::ProjectDeposited { consumer, project_id, quota });
-			Ok(().into())
-		}
-
-		#[pallet::weight(T::WeightInfo::withdraw_project_deposit())]
-		pub fn withdraw_project_deposit(
-			origin: OriginFor<T>,
-			project_id: T::MassbitId,
-		) -> DispatchResultWithPostInfo {
-			let consumer = ensure_signed(origin)?;
-
-			let mut project = Projects::<T>::get(&project_id).ok_or(Error::<T>::NotExist)?;
-			ensure!(project.consumer == consumer, Error::<T>::NotOwner);
-
-			let current_block = <frame_system::Pallet<T>>::block_number();
-			let (valid_chunks, future_chunks) = project.deposit_info.partition(current_block);
-			let withdraw_amount = valid_chunks.sum();
-			ensure!(!withdraw_amount.is_zero(), Error::<T>::NothingToWithdraw);
-
-			project.deposit_info = future_chunks;
-			Projects::<T>::insert(&project_id, project);
-
-			T::Currency::unreserve(&consumer, withdraw_amount);
-
-			Self::deposit_event(Event::<T>::Withdrawn {
-				account: consumer,
-				amount: withdraw_amount,
-			});
 			Ok(().into())
 		}
 
@@ -314,7 +266,7 @@ pub mod pallet {
 
 			ensure!(!<Providers<T>>::contains_key(&provider_id), Error::<T>::AlreadyExist);
 
-			let bounded_chain_id: BoundedVec<u8, T::StringLimit> =
+			let bounded_chain_id: BoundedVec<u8, T::ChainIdMaxLength> =
 				chain_id.clone().try_into().map_err(|_| Error::<T>::BadChainId)?;
 			ensure!(Self::chain_ids().contains(&bounded_chain_id), Error::<T>::BadChainId);
 
@@ -396,7 +348,7 @@ pub mod pallet {
 		pub fn add_chain_id(origin: OriginFor<T>, chain_id: Vec<u8>) -> DispatchResultWithPostInfo {
 			let _ = ensure_root(origin);
 
-			let bounded_chain_id: BoundedVec<u8, T::StringLimit> =
+			let bounded_chain_id: BoundedVec<u8, T::ChainIdMaxLength> =
 				chain_id.clone().try_into().map_err(|_| Error::<T>::BadChainId)?;
 
 			let mut chain_ids = ChainIds::<T>::get();
@@ -416,7 +368,7 @@ pub mod pallet {
 		) -> DispatchResultWithPostInfo {
 			let _ = ensure_root(origin);
 
-			let bounded_chain_id: BoundedVec<u8, T::StringLimit> =
+			let bounded_chain_id: BoundedVec<u8, T::ChainIdMaxLength> =
 				chain_id.clone().try_into().map_err(|_| Error::<T>::BadChainId)?;
 
 			let mut chain_ids = ChainIds::<T>::get();
