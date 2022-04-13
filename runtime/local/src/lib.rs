@@ -248,27 +248,35 @@ impl pallet_utility::Config for Runtime {
 	type WeightInfo = ();
 }
 
+parameter_types! {
+	pub const DapiStakingPalletId: PalletId = PalletId(*b"py/dapst");
+}
+
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
 
-pub struct OnBlockReward;
-impl OnUnbalanced<NegativeImbalance> for OnBlockReward {
-	fn on_nonzero_unbalanced(amount: NegativeImbalance) {
-		DapiStaking::on_unbalanced(amount);
+pub struct BeneficiaryPayout();
+impl pallet_block_reward::BeneficiaryPayout<NegativeImbalance> for BeneficiaryPayout {
+	fn validators(_: NegativeImbalance) {
+		// no validators for local dev node
+	}
+
+	fn providers(reward: NegativeImbalance) {
+		DapiStaking::rewards(reward)
 	}
 }
 
 parameter_types! {
-	pub const RewardAmount: Balance = 100_000 * MILLIMBT;
+	pub const RewardAmount: Balance = 2_664 * MILLIMBT;
 }
 
 impl pallet_block_reward::Config for Runtime {
 	type Currency = Balances;
-	type OnBlockReward = OnBlockReward;
+	type BeneficiaryPayout = BeneficiaryPayout;
 	type RewardAmount = RewardAmount;
+	type Event = Event;
 }
 
 parameter_types! {
-	pub const DapiStakingPalletId: PalletId = PalletId(*b"pi/dapst");
 	pub const BlockPerEra: BlockNumber = 200;
 	pub const RegisterDeposit: Balance = 90 * MBT;
 	pub const OperatorRewardPercentage: Perbill = Perbill::from_percent(80);
@@ -284,8 +292,8 @@ impl pallet_dapi_staking::Config for Runtime {
 	type Currency = Balances;
 	type ProviderId = MassbitId;
 	type BlockPerEra = BlockPerEra;
-	type RegisterDeposit = RegisterDeposit;
 	type OperatorRewardPercentage = OperatorRewardPercentage;
+	type RegisterDeposit = RegisterDeposit;
 	type MaxNumberOfStakersPerProvider = MaxNumberOfStakersPerProvider;
 	type MinimumStakingAmount = MinimumStakingAmount;
 	type PalletId = DapiStakingPalletId;
@@ -300,7 +308,7 @@ impl pallet_dapi_staking::Config for Runtime {
 pub struct OnProjectPayment;
 impl OnUnbalanced<NegativeImbalance> for OnProjectPayment {
 	fn on_nonzero_unbalanced(amount: NegativeImbalance) {
-		DapiStaking::on_unbalanced(amount);
+		DapiStaking::rewards(amount);
 	}
 }
 
@@ -311,8 +319,8 @@ parameter_types! {
 impl pallet_dapi::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
-	type Staking = DapiStaking;
-	type AddRegulatorOrigin = EnsureRoot<AccountId>;
+	type DapiStaking = DapiStaking;
+	type UpdateRegulatorOrigin = EnsureRoot<AccountId>;
 	type ChainIdMaxLength = MaxBytesInChainId;
 	type MassbitId = MassbitId;
 	type OnProjectPayment = OnProjectPayment;
@@ -344,7 +352,7 @@ construct_runtime!(
 		Utility: pallet_utility::{Pallet, Call, Event},
 		Dapi: pallet_dapi::{Pallet, Call, Storage, Config<T>, Event<T>},
 		DapiStaking: pallet_dapi_staking::{Pallet, Call, Storage, Event<T>},
-		BlockReward: pallet_block_reward::{Pallet},
+		BlockReward: pallet_block_reward::{Pallet, Call, Storage, Config, Event<T>},
 	}
 );
 

@@ -20,6 +20,7 @@ pub enum ProviderType {
 
 #[derive(Copy, Clone, PartialEq, Eq, Encode, Decode, RuntimeDebug, TypeInfo)]
 pub enum ProviderState {
+	Registered,
 	Active,
 	InActive,
 }

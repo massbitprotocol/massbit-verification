@@ -1,14 +1,18 @@
 //! Chain specifications.
 
 use local_runtime::{
-	wasm_binary_unwrap, AccountId, AuraConfig, BalancesConfig, DapiConfig, GenesisConfig,
-	GrandpaConfig, Signature, SudoConfig, SystemConfig,
+	pallet_block_reward, wasm_binary_unwrap, AccountId, AuraConfig, BalancesConfig,
+	BlockRewardConfig, DapiConfig, GenesisConfig, GrandpaConfig, Signature, SudoConfig,
+	SystemConfig,
 };
 use sc_service::ChainType;
 use sp_consensus_aura::sr25519::AuthorityId as AuraId;
 use sp_core::{sr25519, Pair, Public};
 use sp_finality_grandpa::AuthorityId as GrandpaId;
-use sp_runtime::traits::{IdentifyAccount, Verify};
+use sp_runtime::{
+	traits::{IdentifyAccount, Verify},
+	Perbill,
+};
 
 type AccountPublic = <Signature as Verify>::Signer;
 
@@ -82,6 +86,13 @@ fn testnet_genesis(
 				.cloned()
 				.map(|k| (k, 100_000_000_000_000_000_000_000))
 				.collect(),
+		},
+		block_reward: BlockRewardConfig {
+			// Make sure sum is 100
+			reward_config: pallet_block_reward::RewardDistributionConfig {
+				providers_percent: Perbill::from_percent(100),
+				validators_percent: Perbill::zero(),
+			},
 		},
 		aura: AuraConfig {
 			authorities: initial_authorities.iter().map(|x| (x.0.clone())).collect(),

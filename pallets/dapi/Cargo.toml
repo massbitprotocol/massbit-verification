@@ -16,9 +16,6 @@ sp-io = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0
 sp-runtime = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.17", default-features = false }
 sp-std = { git = 'https://github.com/paritytech/substrate.git', branch = "polkadot-v0.9.17", default-features = false }
 pallet-balances = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.17", default-features = false  }
-pallet-randomness-collective-flip = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.17", default-features = false  }
-
-pallet-dapi-staking = { path = "../dapi-staking", default-features = false }
 
 [features]
 default = ['std']
@@ -29,8 +26,6 @@ std = [
     'frame-support/std',
     'frame-system/std',
     'pallet-balances/std',
-    'pallet-randomness-collective-flip/std',
-    'pallet-dapi-staking/std',
     'serde/std',
     'sp-core/std',
     'sp-std/std',
