@@ -50,9 +50,9 @@ pub trait WeightInfo {
 	#[rustfmt::skip]
 	fn remove_chain_id() -> Weight;
 	#[rustfmt::skip]
-	fn add_fisherman() -> Weight;
+	fn add_regulator() -> Weight;
 	#[rustfmt::skip]
-	fn remove_fisherman() -> Weight;
+	fn remove_regulator() -> Weight;
 }
 
 /// Weights for pallet_dapi using the Substrate node and recommended hardware.
@@ -73,7 +73,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// Storage: DapiStaking BlockRewardAccumulator (r:1 w:1)
 	#[rustfmt::skip]
 	fn deposit_project() -> Weight {
-		(29_000_000 as Weight)
+		(28_000_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(4 as Weight))
 			.saturating_add(T::DbWeight::get().writes(4 as Weight))
 	}
@@ -89,7 +89,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// Storage: Balances Locks (r:1 w:1)
 	#[rustfmt::skip]
 	fn register_provider() -> Weight {
-		(46_000_000 as Weight)
+		(45_000_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(10 as Weight))
 			.saturating_add(T::DbWeight::get().writes(8 as Weight))
 	}
@@ -98,7 +98,7 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// Storage: DapiStaking CurrentEra (r:1 w:0)
 	#[rustfmt::skip]
 	fn unregister_provider() -> Weight {
-		(16_000_000 as Weight)
+		(15_000_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(3 as Weight))
 			.saturating_add(T::DbWeight::get().writes(2 as Weight))
 	}
@@ -112,20 +112,20 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 	// Storage: Dapi ChainIds (r:1 w:1)
 	#[rustfmt::skip]
 	fn remove_chain_id() -> Weight {
-		(10_000_000 as Weight)
-			.saturating_add(T::DbWeight::get().reads(1 as Weight))
-			.saturating_add(T::DbWeight::get().writes(1 as Weight))
-	}
-	// Storage: Dapi Fishermen (r:1 w:1)
-	#[rustfmt::skip]
-	fn add_fisherman() -> Weight {
 		(9_000_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(1 as Weight))
 			.saturating_add(T::DbWeight::get().writes(1 as Weight))
 	}
-	// Storage: Dapi Fishermen (r:1 w:1)
+	// Storage: Dapi Regulators (r:1 w:1)
 	#[rustfmt::skip]
-	fn remove_fisherman() -> Weight {
+	fn add_regulator() -> Weight {
+		(9_000_000 as Weight)
+			.saturating_add(T::DbWeight::get().reads(1 as Weight))
+			.saturating_add(T::DbWeight::get().writes(1 as Weight))
+	}
+	// Storage: Dapi Regulators (r:1 w:1)
+	#[rustfmt::skip]
+	fn remove_regulator() -> Weight {
 		(10_000_000 as Weight)
 			.saturating_add(T::DbWeight::get().reads(1 as Weight))
 			.saturating_add(T::DbWeight::get().writes(1 as Weight))
@@ -149,7 +149,7 @@ impl WeightInfo for () {
 	// Storage: DapiStaking BlockRewardAccumulator (r:1 w:1)
 	#[rustfmt::skip]
 	fn deposit_project() -> Weight {
-		(29_000_000 as Weight)
+		(28_000_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(4 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(4 as Weight))
 	}
@@ -165,7 +165,7 @@ impl WeightInfo for () {
 	// Storage: Balances Locks (r:1 w:1)
 	#[rustfmt::skip]
 	fn register_provider() -> Weight {
-		(46_000_000 as Weight)
+		(45_000_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(10 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(8 as Weight))
 	}
@@ -174,7 +174,7 @@ impl WeightInfo for () {
 	// Storage: DapiStaking CurrentEra (r:1 w:0)
 	#[rustfmt::skip]
 	fn unregister_provider() -> Weight {
-		(16_000_000 as Weight)
+		(15_000_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(3 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(2 as Weight))
 	}
@@ -188,20 +188,20 @@ impl WeightInfo for () {
 	// Storage: Dapi ChainIds (r:1 w:1)
 	#[rustfmt::skip]
 	fn remove_chain_id() -> Weight {
-		(10_000_000 as Weight)
-			.saturating_add(RocksDbWeight::get().reads(1 as Weight))
-			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
-	}
-	// Storage: Dapi Fishermen (r:1 w:1)
-	#[rustfmt::skip]
-	fn add_fisherman() -> Weight {
 		(9_000_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(1 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
 	}
-	// Storage: Dapi Fishermen (r:1 w:1)
+	// Storage: Dapi Regulators (r:1 w:1)
 	#[rustfmt::skip]
-	fn remove_fisherman() -> Weight {
+	fn add_regulator() -> Weight {
+		(9_000_000 as Weight)
+			.saturating_add(RocksDbWeight::get().reads(1 as Weight))
+			.saturating_add(RocksDbWeight::get().writes(1 as Weight))
+	}
+	// Storage: Dapi Regulators (r:1 w:1)
+	#[rustfmt::skip]
+	fn remove_regulator() -> Weight {
 		(10_000_000 as Weight)
 			.saturating_add(RocksDbWeight::get().reads(1 as Weight))
 			.saturating_add(RocksDbWeight::get().writes(1 as Weight))

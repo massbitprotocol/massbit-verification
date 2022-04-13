@@ -14,7 +14,7 @@ fn initialize<T: Config>() {
 	// Remove everything from storage
 	Projects::<T>::remove_all(None);
 	Providers::<T>::remove_all(None);
-	Fishermen::<T>::kill();
+	Regulators::<T>::kill();
 	ChainIds::<T>::kill();
 
 	Dapi::<T>::add_chain_id(RawOrigin::Root.into(), "eth.mainnet".into()).unwrap();
@@ -92,19 +92,19 @@ benchmarks! {
 
 	}: _(RawOrigin::Root, "eth.mainnet".into())
 
-	add_fisherman {
+	add_regulator {
 		initialize::<T>();
-		let fisherman: T::AccountId = account("fisherman", 10000, SEED);
+		let regulator: T::AccountId = account("regulator", 10000, SEED);
 
-	}: _(RawOrigin::Root, fisherman)
+	}: _(RawOrigin::Root, regulator)
 
-	remove_fisherman {
+	remove_regulator {
 		initialize::<T>();
 
-		let fisherman: T::AccountId = account("fisherman", 10000, SEED);
-		Dapi::<T>::add_fisherman(RawOrigin::Root.into(), fisherman.clone())?;
+		let regulator: T::AccountId = account("regulator", 10000, SEED);
+		Dapi::<T>::add_regulator(RawOrigin::Root.into(), regulator.clone())?;
 
-	}: _(RawOrigin::Root, fisherman)
+	}: _(RawOrigin::Root, regulator)
 }
 
 #[cfg(test)]

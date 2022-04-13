@@ -72,7 +72,7 @@ fn testnet_genesis(
 	initial_authorities: Vec<(AuraId, GrandpaId)>,
 	root_key: AccountId,
 	endowed_accounts: Vec<AccountId>,
-	initial_fishermen: Vec<AccountId>,
+	initial_regulators: Vec<AccountId>,
 ) -> GenesisConfig {
 	GenesisConfig {
 		system: SystemConfig { code: wasm_binary_unwrap().to_vec() },
@@ -90,7 +90,7 @@ fn testnet_genesis(
 			authorities: initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect(),
 		},
 		sudo: SudoConfig { key: Some(root_key) },
-		dapi: DapiConfig { fishermen: initial_fishermen.iter().map(|x| x.clone()).collect() },
+		dapi: DapiConfig { regulators: initial_regulators.iter().map(|x| x.clone()).collect() },
 	}
 }
 
