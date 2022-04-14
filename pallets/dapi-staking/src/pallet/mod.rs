@@ -4,7 +4,7 @@ use frame_support::{
 	ensure,
 	traits::{
 		Currency, ExistenceRequirement, Get, Imbalance, LockIdentifier, LockableCurrency,
-		OnUnbalanced, ReservableCurrency, WithdrawReasons,
+		ReservableCurrency, WithdrawReasons,
 	},
 	weights::Weight,
 	PalletId,
@@ -16,6 +16,8 @@ use sp_runtime::{
 };
 use sp_std::convert::From;
 
+use pallet_dapi::DapiStaking;
+
 const STAKING_ID: LockIdentifier = *b"dapistak";
 
 #[frame_support::pallet]
@@ -24,28 +26,14 @@ pub mod pallet {
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
 
+	/// The balance type of this pallet.
 	pub type BalanceOf<T> =
 		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+	/// Negative imbalance type of this pallet.
 	type NegativeImbalanceOf<T> = <<T as Config>::Currency as Currency<
 		<T as frame_system::Config>::AccountId,
 	>>::NegativeImbalance;
-
-	impl<T: Config> OnUnbalanced<NegativeImbalanceOf<T>> for Pallet<T> {
-		fn on_nonzero_unbalanced(imbalance: NegativeImbalanceOf<T>) {
-			let operators_part = T::OperatorRewardPercentage::get() * imbalance.peek();
-			let stakers_part = imbalance.peek().saturating_sub(operators_part);
-
-			BlockRewardAccumulator::<T>::mutate(|accumulated_reward| {
-				accumulated_reward.operators =
-					accumulated_reward.operators.saturating_add(operators_part);
-				accumulated_reward.stakers =
-					accumulated_reward.stakers.saturating_add(stakers_part);
-			});
-
-			T::Currency::resolve_creating(&Self::account_id(), imbalance);
-		}
-	}
 
 	#[pallet::pallet]
 	#[pallet::generate_store(pub(crate) trait Store)]
@@ -65,13 +53,13 @@ pub mod pallet {
 		#[pallet::constant]
 		type BlockPerEra: Get<BlockNumberFor<Self>>;
 
-		/// Minimum bonded deposit for new provider registration.
-		#[pallet::constant]
-		type RegisterDeposit: Get<BalanceOf<Self>>;
-
 		/// Percentage of reward paid to operator.
 		#[pallet::constant]
 		type OperatorRewardPercentage: Get<Perbill>;
+
+		/// Minimum bonded deposit for new provider registration.
+		#[pallet::constant]
+		type RegisterDeposit: Get<BalanceOf<Self>>;
 
 		/// Maximum number of unique stakers per provider.
 		#[pallet::constant]
@@ -683,17 +671,8 @@ pub mod pallet {
 		}
 	}
 
-	pub trait Staking<AccountId, Provider, Balance> {
-		fn register(
-			origin: AccountId,
-			provider_id: Provider,
-			deposit: Balance,
-		) -> DispatchResultWithPostInfo;
-		fn unregister(provider_id: Provider) -> DispatchResultWithPostInfo;
-	}
-
 	impl<T: Config>
-		Staking<
+		DapiStaking<
 			T::AccountId,
 			T::ProviderId,
 			<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance,
@@ -864,6 +843,21 @@ pub mod pallet {
 			let stakers_reward_part = provider_stake_portion * era_info.rewards.stakers;
 
 			(operator_reward_part, stakers_reward_part)
+		}
+
+		/// Adds rewards to the reward pool.
+		pub fn rewards(imbalance: NegativeImbalanceOf<T>) {
+			let operators_part = T::OperatorRewardPercentage::get() * imbalance.peek();
+			let stakers_part = imbalance.peek().saturating_sub(operators_part);
+
+			BlockRewardAccumulator::<T>::mutate(|accumulated_reward| {
+				accumulated_reward.operators =
+					accumulated_reward.operators.saturating_add(operators_part);
+				accumulated_reward.stakers =
+					accumulated_reward.stakers.saturating_add(stakers_part);
+			});
+
+			T::Currency::resolve_creating(&Self::account_id(), imbalance);
 		}
 	}
 }

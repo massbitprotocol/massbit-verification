@@ -3,11 +3,12 @@
 pub mod types;
 pub mod weights;
 
-use frame_support::traits::{Currency, ExistenceRequirement, OnUnbalanced, WithdrawReasons};
+use frame_support::{
+	pallet_prelude::DispatchResultWithPostInfo,
+	traits::{Currency, ExistenceRequirement, OnUnbalanced, WithdrawReasons},
+};
 use sp_runtime::traits::Scale;
 use sp_std::{collections::btree_set::BTreeSet, prelude::*};
-
-use pallet_dapi_staking::Staking;
 
 #[cfg(any(feature = "runtime-benchmarks"))]
 pub mod benchmarking;
@@ -45,16 +46,16 @@ pub mod pallet {
 		/// The currency mechanism
 		type Currency: Currency<Self::AccountId>;
 
-		/// Interface of dapi staking pallet.
-		type Staking: Staking<Self::AccountId, Self::MassbitId, BalanceOf<Self>>;
+		/// dAPI staking.
+		type DapiStaking: DapiStaking<Self::AccountId, Self::MassbitId, BalanceOf<Self>>;
 
-		/// The origin which can add regulator.
-		type AddRegulatorOrigin: EnsureOrigin<Self::Origin>;
+		/// The origin which can add/remove regulators.
+		type UpdateRegulatorOrigin: EnsureOrigin<Self::Origin>;
 
 		/// For constraining the maximum length of a chain id.
 		type ChainIdMaxLength: Get<u32>;
 
-		/// The identifier of Massbit provider/project.
+		/// The Id type of Massbit provider or project.
 		type MassbitId: Parameter + Member + Default;
 
 		/// Handle project payment as imbalance.
@@ -68,26 +69,26 @@ pub mod pallet {
 
 	#[pallet::error]
 	pub enum Error<T> {
-		/// Entity is already registered.
+		/// The provider/project is already registered.
 		AlreadyExist,
 		/// The provider is inactive.
-		NotOperatedProvider,
+		InactiveProvider,
 		/// Chain Id is too long.
 		BadChainId,
-		/// The provider or project doesn't exist in the list.
+		/// The provider/project doesn't exist in the list.
 		NotExist,
-		/// You are not the owner of the provider or project.
+		/// You are not the owner of the The provider/project.
 		NotOwner,
 		/// No permission to perform specific operation.
 		PermissionDenied,
 		/// Provider invalid state.
-		InvalidState,
+		InvalidProviderState,
 	}
 
 	#[pallet::event]
 	#[pallet::generate_deposit(pub(super) fn deposit_event)]
 	pub enum Event<T: Config> {
-		/// A new project is registered.
+		/// New project is registered.
 		ProjectRegistered {
 			project_id: T::MassbitId,
 			consumer: T::AccountId,
@@ -96,6 +97,8 @@ pub mod pallet {
 		},
 		/// Project is deposited.
 		ProjectDeposited { project_id: T::MassbitId, quota: u128 },
+		/// Project reached max quota.
+		ProjectReachedQuota { project_id: T::MassbitId },
 		/// A provider is registered.
 		ProviderRegistered {
 			provider_id: T::MassbitId,
@@ -103,23 +106,21 @@ pub mod pallet {
 			operator: T::AccountId,
 			chain_id: Vec<u8>,
 		},
-		/// Provider is activated.
+		/// Provider is deposited and becomes activated.
 		ProviderActivated { provider_id: T::MassbitId, provider_type: ProviderType },
-		/// A provider is deactivated.
+		/// A provider is deactivated by deregistration or reported offence by regulator.
 		ProviderDeactivated {
 			provider_id: T::MassbitId,
 			provider_type: ProviderType,
 			reason: ProviderDeactivateReason,
 		},
-		/// Project reached max quota.
-		ProjectReachedQuota { project_id: T::MassbitId },
 		/// Chain Id is added to well known set.
 		ChainIdAdded { chain_id: Vec<u8> },
-		/// Chain id is removed from well known set.
+		/// Chain Id is removed from well known set.
 		ChainIdRemoved { chain_id: Vec<u8> },
-		/// Regulator is added.
+		/// New regulator is added.
 		RegulatorAdded { account_id: T::AccountId },
-		/// Regulator is removed.
+		/// New regulator is removed.
 		RegulatorRemoved { account_id: T::AccountId },
 	}
 
@@ -156,7 +157,9 @@ pub mod pallet {
 	#[pallet::genesis_build]
 	impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
 		fn build(&self) {
-			Pallet::<T>::initialize_regulators(&self.regulators);
+			let regulators =
+				&self.regulators.iter().map(|r| r.clone()).collect::<BTreeSet<T::AccountId>>();
+			Regulators::<T>::put(&regulators);
 		}
 	}
 
@@ -246,8 +249,8 @@ pub mod pallet {
 		pub fn register_provider(
 			origin: OriginFor<T>,
 			provider_id: T::MassbitId,
-			operator: T::AccountId,
 			provider_type: ProviderType,
+			operator: T::AccountId,
 			chain_id: Vec<u8>,
 		) -> DispatchResultWithPostInfo {
 			let regulator = ensure_signed(origin)?;
@@ -265,7 +268,7 @@ pub mod pallet {
 					provider_type,
 					operator: operator.clone(),
 					chain_id: bounded_chain_id,
-					state: ProviderState::Active,
+					state: ProviderState::Registered,
 				},
 			);
 
@@ -275,6 +278,7 @@ pub mod pallet {
 				operator,
 				chain_id,
 			});
+
 			Ok(().into())
 		}
 
@@ -288,9 +292,9 @@ pub mod pallet {
 
 			let mut provider = Providers::<T>::get(&provider_id).ok_or(Error::<T>::NotExist)?;
 			ensure!(provider.operator == operator, Error::<T>::NotOwner);
-			ensure!(provider.state == ProviderState::Active, Error::<T>::InvalidState);
+			ensure!(provider.state == ProviderState::Registered, Error::<T>::InvalidProviderState);
 
-			T::Staking::register(operator.clone(), provider_id.clone(), deposit)?;
+			T::DapiStaking::register(operator.clone(), provider_id.clone(), deposit)?;
 
 			provider.state = ProviderState::Active;
 			Providers::<T>::insert(&provider_id, provider.clone());
@@ -299,6 +303,7 @@ pub mod pallet {
 				provider_id,
 				provider_type: provider.provider_type,
 			});
+
 			Ok(().into())
 		}
 
@@ -311,9 +316,9 @@ pub mod pallet {
 
 			let mut provider = Providers::<T>::get(&provider_id).ok_or(Error::<T>::NotExist)?;
 			ensure!(provider.operator == account, Error::<T>::NotOwner);
-			ensure!(provider.state == ProviderState::Active, Error::<T>::NotOperatedProvider);
+			ensure!(provider.state == ProviderState::Active, Error::<T>::InactiveProvider);
 
-			T::Staking::unregister(provider_id.clone())?;
+			T::DapiStaking::unregister(provider_id.clone())?;
 
 			provider.state = ProviderState::InActive;
 			Providers::<T>::insert(&provider_id, provider.clone());
@@ -323,11 +328,12 @@ pub mod pallet {
 				provider_type: provider.provider_type,
 				reason: ProviderDeactivateReason::UnRegistered,
 			});
+
 			Ok(().into())
 		}
 
 		#[pallet::weight(100)]
-		pub fn deactivate_provider(
+		pub fn report_provider_offence(
 			origin: OriginFor<T>,
 			provider_id: T::MassbitId,
 			reason: ProviderDeactivateReason,
@@ -336,9 +342,9 @@ pub mod pallet {
 			ensure!(Self::regulators().contains(&regulator), Error::<T>::PermissionDenied);
 
 			let mut provider = Self::providers(&provider_id).ok_or(Error::<T>::NotExist)?;
-			ensure!(provider.state == ProviderState::Active, Error::<T>::NotOperatedProvider);
+			ensure!(provider.state == ProviderState::Active, Error::<T>::InvalidProviderState);
 
-			T::Staking::unregister(provider_id.clone())?;
+			T::DapiStaking::unregister(provider_id.clone())?;
 
 			provider.state = ProviderState::InActive;
 			Providers::<T>::insert(&provider_id, provider.clone());
@@ -348,6 +354,43 @@ pub mod pallet {
 				provider_type: provider.provider_type,
 				reason,
 			});
+
+			Ok(().into())
+		}
+
+		#[pallet::weight(T::WeightInfo::add_regulator())]
+		pub fn add_regulator(
+			origin: OriginFor<T>,
+			account_id: T::AccountId,
+		) -> DispatchResultWithPostInfo {
+			let _ = ensure_root(origin);
+
+			let mut regulators = Regulators::<T>::get();
+			ensure!(!regulators.contains(&account_id), Error::<T>::AlreadyExist);
+
+			regulators.insert(account_id.clone());
+			Regulators::<T>::put(&regulators);
+
+			Self::deposit_event(Event::RegulatorAdded { account_id });
+
+			Ok(().into())
+		}
+
+		#[pallet::weight(T::WeightInfo::remove_regulator())]
+		pub fn remove_regulator(
+			origin: OriginFor<T>,
+			account_id: T::AccountId,
+		) -> DispatchResultWithPostInfo {
+			let _ = ensure_root(origin);
+
+			let mut regulators = Regulators::<T>::get();
+			ensure!(regulators.contains(&account_id), Error::<T>::NotExist);
+
+			regulators.remove(&account_id);
+			Regulators::<T>::put(&regulators);
+
+			Self::deposit_event(Event::RegulatorRemoved { account_id });
+
 			Ok(().into())
 		}
 
@@ -365,6 +408,7 @@ pub mod pallet {
 			ChainIds::<T>::put(&chain_ids);
 
 			Self::deposit_event(Event::ChainIdAdded { chain_id });
+
 			Ok(().into())
 		}
 
@@ -385,40 +429,7 @@ pub mod pallet {
 			ChainIds::<T>::put(&chain_ids);
 
 			Self::deposit_event(Event::ChainIdRemoved { chain_id });
-			Ok(().into())
-		}
 
-		#[pallet::weight(T::WeightInfo::add_regulator())]
-		pub fn add_regulator(
-			origin: OriginFor<T>,
-			account_id: T::AccountId,
-		) -> DispatchResultWithPostInfo {
-			let _ = ensure_root(origin);
-
-			let mut regulators = Regulators::<T>::get();
-			ensure!(!regulators.contains(&account_id), Error::<T>::AlreadyExist);
-
-			regulators.insert(account_id.clone());
-			Regulators::<T>::put(&regulators);
-
-			Self::deposit_event(Event::RegulatorAdded { account_id });
-			Ok(().into())
-		}
-
-		#[pallet::weight(T::WeightInfo::remove_regulator())]
-		pub fn remove_regulator(
-			origin: OriginFor<T>,
-			account_id: T::AccountId,
-		) -> DispatchResultWithPostInfo {
-			let _ = ensure_root(origin);
-
-			let mut regulators = Regulators::<T>::get();
-			ensure!(regulators.contains(&account_id), Error::<T>::NotExist);
-
-			regulators.remove(&account_id);
-			Regulators::<T>::put(&regulators);
-
-			Self::deposit_event(Event::RegulatorRemoved { account_id });
 			Ok(().into())
 		}
 	}
@@ -430,11 +441,15 @@ pub mod pallet {
 				.unwrap_or_default()
 				.div(1_000_000_000_000_000u128)
 		}
-
-		fn initialize_regulators(regulators: &Vec<T::AccountId>) {
-			let account_ids =
-				regulators.iter().map(|r| r.clone()).collect::<BTreeSet<T::AccountId>>();
-			Regulators::<T>::put(&account_ids);
-		}
 	}
+}
+
+pub trait DapiStaking<AccountId, Provider, Balance> {
+	fn register(
+		origin: AccountId,
+		provider_id: Provider,
+		deposit: Balance,
+	) -> DispatchResultWithPostInfo;
+
+	fn unregister(provider_id: Provider) -> DispatchResultWithPostInfo;
 }

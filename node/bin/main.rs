@@ -1,7 +1,7 @@
-//! Massbit collator binary.
+//! Massbit validator binary.
 
 #![warn(missing_docs)]
 
 fn main() -> Result<(), sc_cli::Error> {
-	massbit_collator::run()
+	massbit_node::run()
 }

@@ -4,8 +4,7 @@ use super::*;
 use crate::Pallet as Dapi;
 
 use frame_benchmarking::{account, benchmarks, impl_benchmark_test_suite};
-use frame_support::traits::Get;
-use frame_system::{Pallet as System, RawOrigin};
+use frame_system::RawOrigin;
 use sp_runtime::traits::Bounded;
 
 const SEED: u32 = 9000;
